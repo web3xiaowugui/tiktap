@@ -87,7 +87,8 @@ export function CandleChart({
         borderVisible: false,
         timeVisible: true,
         secondsVisible: false,
-        rightOffset: 3,
+        // 右侧留出 30 根 K 线的空白，价格线标签（锁定价格 / 开奖价格）不会压到 K 线
+        rightOffset: 30,
         barSpacing: 6,
         minBarSpacing: 2,
         tickMarkFormatter: (time: Time) => {
@@ -223,7 +224,12 @@ export function CandleChart({
         priceLineColor: last.close >= last.open ? UP : DOWN,
       });
       if (!fittedRef.current) {
-        chart.timeScale().fitContent();
+        // 先按「最近 90 根 + 右侧 30 根空位」定位，保证右边永远有一截空白
+        const bars = candleData.length;
+        chart.timeScale().setVisibleLogicalRange({
+          from: Math.max(0, bars - 90),
+          to: bars + 30,
+        });
         fittedRef.current = true;
       }
     }
