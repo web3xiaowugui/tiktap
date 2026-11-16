@@ -4,7 +4,7 @@ Foundry 工程。**不依赖任何 Solidity 库**（ERC20 与权限都自己写�
 
 ## 前提
 
-本机还没装 Foundry。安装后以下命令可用：
+Foundry v1.9.0 已装好（`forge` / `cast` / `anvil` / `chisel`，位于 `%USERPROFILE%\.foundry\bin`，并已加入用户 PATH）。
 
 ```bash
 # 本地链（1 秒一个块，和前端假设一致）
@@ -14,6 +14,8 @@ anvil --block-time 1
 pnpm contracts:build
 pnpm contracts:test
 ```
+
+Solc 0.8.24 由 forge 自动下载，已验证可编译。
 
 ## 计划中的合约
 

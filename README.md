@@ -44,7 +44,7 @@ pnpm contracts:build
 pnpm contracts:test
 ```
 
-本机还没装 Foundry。合约**不引入任何依赖库**（ERC20 与权限自己写），因此不需要 `forge install`。
+Foundry v1.9.0 已安装（`forge` / `cast` / `anvil` / `chisel` 在 `%USERPROFILE%\.foundry\bin`，已加入用户 PATH）。合约**不引入任何依赖库**（ERC20 与权限自己写），因此不需要 `forge install`。
 
 ## 设计要点
 
