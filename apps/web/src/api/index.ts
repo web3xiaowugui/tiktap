@@ -95,9 +95,15 @@ export async function getMyBet(
   marketSymbol: string,
   betTokenSymbol: string,
   roundStartBlock: number,
+  address?: string | null,
 ): Promise<MyBet | null> {
   return request<MyBet | null>(
-    `/my-bet${query({ market: marketSymbol, token: betTokenSymbol, round: roundStartBlock })}`,
+    `/my-bet${query({
+      market: marketSymbol,
+      token: betTokenSymbol,
+      round: roundStartBlock,
+      address: address ?? undefined,
+    })}`,
   );
 }
 
@@ -137,8 +143,8 @@ export async function getMarketActivity(
   return request<MarketActivity[]>(`/activity${query({ symbol, round: roundStartBlock })}`);
 }
 
-export async function getHoldings(): Promise<BetHolding[]> {
-  return request<BetHolding[]>("/holdings");
+export async function getHoldings(address?: string | null): Promise<BetHolding[]> {
+  return request<BetHolding[]>(`/holdings${query({ address: address ?? undefined })}`);
 }
 
 export async function getProfile(handle: string): Promise<Profile> {
@@ -157,6 +163,81 @@ export async function getEquityCurve(handle: string, range: Range): Promise<Equi
   return request<EquityPoint[]>(
     `/profiles/${encodeURIComponent(handle)}/equity${query({ range })}`,
   );
+}
+
+/** 当前轮次真值（链上）。 */
+export async function getRound(): Promise<{
+  blockNumber: number;
+  currentRound: number;
+  isBettingOpen: boolean;
+  roundStartBlock: number;
+  roundEndBlock: number;
+  blocksLeftInWindow: number;
+}> {
+  return request("/round");
+}
+
+/** 建托管号：生成地址、入白名单、打 gas，返回地址。 */
+export async function createUser(): Promise<{
+  id: number;
+  address: string;
+  allowTxHash: string | null;
+  fundedWei: string;
+  warning?: string;
+}> {
+  return request("/users", { method: "POST", body: "{}" });
+}
+
+export async function getUser(address: string): Promise<{ id: number; address: string } | null> {
+  try {
+    return await request(`/users/${encodeURIComponent(address)}`);
+  } catch {
+    return null;
+  }
+}
+
+/** 链上余额（原生币 + 各下注代币）。 */
+export async function getWallet(address: string): Promise<{
+  address: string;
+  native: number;
+  tokens: Array<{ symbol: string; balance: number; tokenAddress: string }>;
+}> {
+  return request(`/wallet/${encodeURIComponent(address)}`);
+}
+
+export async function placeBet(input: {
+  address: string;
+  market: string;
+  betToken: string;
+  side: "long" | "short";
+  amount: string;
+}): Promise<{
+  txHash: string;
+  marketId: number;
+  roundIndex: number;
+  side: number;
+  amountWei: string;
+  status: string;
+  approveTxHash: string | null;
+}> {
+  return request("/bet", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function claimBet(input: {
+  address: string;
+  market: string;
+  betToken: string;
+  roundIndex: number;
+}): Promise<{ txHash: string; marketId: number; roundIndex: number; amountWei: string }> {
+  return request("/claim", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function faucet(input: {
+  address: string;
+  betToken: string;
+  amount: string;
+}): Promise<{ txHash: string; amountWei: string }> {
+  return request("/faucet", { method: "POST", body: JSON.stringify(input) });
 }
 
 export async function signInWithOkx(address: string, chainId?: string): Promise<AuthUser> {

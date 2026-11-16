@@ -8,6 +8,7 @@ import { TradePanel } from "@/components/TradePanel";
 import { TransferPanel } from "@/components/TransferPanel";
 import { useAuth } from "@/context/AuthContext";
 import { BetTokenProvider } from "@/context/BetTokenContext";
+import { ChainClockProvider } from "@/lib/chainClock";
 
 const getSidebarBaseWidth = () =>
   typeof window !== "undefined" &&
@@ -47,7 +48,8 @@ export default function AppLayout() {
   const isProfile = pathname.startsWith("/u/");
 
   return (
-    <BetTokenProvider>
+    <ChainClockProvider>
+      <BetTokenProvider>
       <div className="app-ui flex h-dvh flex-col overflow-hidden bg-ink">
         <TopBar />
         <div className="flex min-h-0 flex-1">
@@ -65,6 +67,7 @@ export default function AppLayout() {
         </div>
         <TickerBar />
       </div>
-    </BetTokenProvider>
+      </BetTokenProvider>
+    </ChainClockProvider>
   );
 }

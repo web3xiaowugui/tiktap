@@ -7,13 +7,14 @@ import { cn } from "@/lib/cn";
 import { fmtQty } from "@/lib/format";
 import {
   ROUND_INTERVAL_BLOCKS,
-  getBlockNumber,
   roundCountdownFor,
+  roundStartFor,
   roundStatusFor,
   type RoundStatus,
 } from "@/lib/rounds";
 import { useApi } from "@/lib/useApi";
-import { useNow } from "@/lib/useNow";
+import { useAuth } from "@/context/AuthContext";
+import { useChainClock } from "@/lib/chainClock";
 
 const STATUS_LABEL: Record<RoundStatus, string> = {
   betting: "下注中",
@@ -40,13 +41,17 @@ export function YourPositions({ withHeader = true }: { withHeader?: boolean }) {
     selectToken(token);
     navigate(`/discover?symbol=${encodeURIComponent(symbol)}`);
   };
-  const now = useNow(1_000);
-  const { data, loading } = useApi(getHoldings, []);
+  const { user } = useAuth();
+  const clock = useChainClock();
+  const address = user?.address ?? null;
+  const { data, loading } = useApi(
+    () => getHoldings(address),
+    [address, clock.version],
+  );
 
   const rows = data ?? [];
-  const block = getBlockNumber(now);
-  const activeStartBlock =
-    Math.floor(block / ROUND_INTERVAL_BLOCKS) * ROUND_INTERVAL_BLOCKS;
+  const block = clock.block;
+  const activeStartBlock = roundStartFor(block, clock.anchor);
 
   // 持仓 only covers live rounds; settled bets have already paid out.
   const holdings = useMemo(
@@ -54,6 +59,7 @@ export function YourPositions({ withHeader = true }: { withHeader?: boolean }) {
       rows
         .map((row) => {
           const startBlock =
+            row.roundStartBlock ??
             activeStartBlock + row.roundOffset * ROUND_INTERVAL_BLOCKS;
 
           return {

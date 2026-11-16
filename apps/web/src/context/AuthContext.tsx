@@ -1,20 +1,19 @@
 import {
   createContext,
-  type ReactNode,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
+  type ReactNode,
 } from "react";
-import {
-  signInAsDemo,
-  signInWithOkx,
-  signOut as signOutRequest,
-} from "@/api";
+import { createUser, getUser, signInAsDemo, signInWithOkx, signOut as signOutRequest } from "@/api";
 import type { AuthUser } from "@/api/types";
 import { connectOkxWallet } from "@/lib/okxWallet";
 
 const STORAGE_KEY = "fomo.demo.auth.v2";
+/** 托管地址单独存一份，换账号登录也不会丢。 */
+const ADDRESS_KEY = "tiktap.custody.address.v1";
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -24,6 +23,42 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+function readStoredAddress(): string | null {
+  try {
+    return localStorage.getItem(ADDRESS_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function rememberAddress(address: string): void {
+  try {
+    localStorage.setItem(ADDRESS_KEY, address);
+  } catch {
+    // non-fatal
+  }
+}
+
+/**
+ * 拿到（或创建）这个人的托管钱包地址。
+ * 先看本地缓存，再确认后端确实有这个用户，最后才新建 —— 避免每次登录都多造一个号。
+ */
+async function ensureCustodialAddress(known?: string): Promise<string> {
+  const candidate = known ?? readStoredAddress();
+
+  if (candidate) {
+    const existing = await getUser(candidate);
+    if (existing) {
+      rememberAddress(existing.address);
+      return existing.address;
+    }
+  }
+
+  const created = await createUser();
+  rememberAddress(created.address);
+  return created.address;
+}
 
 function readInitialUser(): AuthUser | null {
   try {
@@ -78,16 +113,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return nextUser;
   }, []);
 
+  // 已经登录但还没有托管地址（比如老会话）：补建一次。
+  useEffect(() => {
+    if (!user || user.address) return;
+    let alive = true;
+    void ensureCustodialAddress()
+      .then((address) => {
+        if (alive) remember({ ...user, address });
+      })
+      .catch(() => {
+        // 后端/链不可用时保持无地址状态，下注按钮会提示
+      });
+    return () => {
+      alive = false;
+    };
+  }, [user, remember]);
+
+  const withCustody = useCallback(
+    async (nextUser: AuthUser) => {
+      const address = await ensureCustodialAddress(nextUser.address);
+      return remember({ ...nextUser, address });
+    },
+    [remember],
+  );
+
   const connectOkx = useCallback(async () => {
     const account = await connectOkxWallet();
     const nextUser = await signInWithOkx(account.address, account.chainId);
-    return remember(nextUser);
-  }, [remember]);
+    return withCustody(nextUser);
+  }, [withCustody]);
 
   const signInDemo = useCallback(async () => {
     const nextUser = await signInAsDemo();
-    return remember(nextUser);
-  }, [remember]);
+    return withCustody(nextUser);
+  }, [withCustody]);
 
   const signOut = useCallback(async () => {
     await signOutRequest();

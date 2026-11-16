@@ -14,6 +14,15 @@ import {
 } from "./settlement.ts";
 import { readConfig } from "./tx.ts";
 import {
+  anchorBlock,
+  marketFor,
+  readMyBet,
+  readHoldings,
+  readPool,
+  readWallet,
+  roundIndexFor,
+} from "./read-chain.ts";
+import {
   activityFor,
   BET_QUICK_AMOUNTS,
   BET_TOKENS,
@@ -190,18 +199,27 @@ export function registerRoutes(router: Router, db: Db): void {
   // ---- 市场（标的 × 下注代币）----
   router.get("/api/markets", () => listMarkets(db));
 
-  // ---- 池子 ----
-  router.get("/api/pools", ({ query }) => {
+  // ---- 池子：配了合约就读链上真值，没配就回退到 mock ----
+  router.get("/api/pools", async ({ query }) => {
     const market = requireToken(query.get("market") ?? "").symbol;
     const betToken = requireBetToken(query.get("token") ?? "").symbol;
     const roundStartBlock = readRoundBlock(query);
+    const cfg = readConfig();
+
+    if (cfg.market) {
+      const row = marketFor(db, market, betToken);
+      const roundIndex = await roundIndexFor(cfg, roundStartBlock);
+      const anchor = await anchorBlock(cfg);
+      const pool = await readPool(db, cfg, row, roundIndex, anchor);
+      // readPool 返回里的 roundStartBlock 就是 anchor + roundIndex*600，与请求值一致。
+      return { marketSymbol: market, betTokenSymbol: betToken, ...pool };
+    }
 
     const pool = betPoolFor(market, betToken, roundStartBlock);
     if (!pool) {
       throw new HttpError(404, `暂无 ${market} / ${betToken} / ${roundStartBlock} 的池子数据`);
     }
 
-    // market_id 是链上 PoolMarket 的索引，下注接口要用它。
     const row = findMarket(db, market, betToken);
     return {
       marketId: row?.market_id ?? null,
@@ -212,11 +230,34 @@ export function registerRoutes(router: Router, db: Db): void {
     };
   });
 
-  router.get("/api/my-bet", ({ query }) => {
+  // ---- 我的仓位：有地址且配了合约就读链上 ----
+  router.get("/api/my-bet", async ({ query }) => {
     const market = requireToken(query.get("market") ?? "").symbol;
     const betToken = requireBetToken(query.get("token") ?? "").symbol;
     const roundStartBlock = readRoundBlock(query);
+    const address = query.get("address");
+    const cfg = readConfig();
+
+    if (cfg.market && address) {
+      const row = marketFor(db, market, betToken);
+      const roundIndex = await roundIndexFor(cfg, roundStartBlock);
+      const myBet = await readMyBet(db, cfg, address, row, roundIndex);
+      return {
+        marketSymbol: market,
+        betTokenSymbol: betToken,
+        roundStartBlock,
+        ...myBet,
+      };
+    }
+
     return myBetFor(market, betToken, roundStartBlock);
+  });
+
+  // ---- 钱包余额（真值）----
+  router.get("/api/wallet/:address", async ({ params }) => {
+    const cfg = readConfig();
+    if (!cfg.market) throw new HttpError(503, "未配置 POOL_MARKET_ADDRESS");
+    return readWallet(cfg, params.address);
   });
 
   // ---- 快捷金额 ----
@@ -257,7 +298,12 @@ export function registerRoutes(router: Router, db: Db): void {
   );
 
   // ---- 我的持仓 ----
-  router.get("/api/holdings", () => MY_HOLDINGS);
+  router.get("/api/holdings", async ({ query }) => {
+    const address = query.get("address");
+    const cfg = readConfig();
+    if (cfg.market && address) return readHoldings(db, cfg, address);
+    return MY_HOLDINGS;
+  });
 
   // ---- 个人主页 ----
   router.get("/api/profiles/:handle", ({ params }) => profileFor(params.handle));

@@ -25,10 +25,10 @@ import { TokenIcon } from "@/components/TokenIcon";
 import { useBetToken } from "@/context/BetTokenContext";
 import { cn } from "@/lib/cn";
 import { fmtSignedUsd, fmtUsd } from "@/lib/format";
-import { getBlockNumber, getTimelineRounds } from "@/lib/rounds";
+import { getTimelineRounds } from "@/lib/rounds";
 import { useApi } from "@/lib/useApi";
 import { useLiveCandles } from "@/lib/useLiveCandles";
-import { useNow } from "@/lib/useNow";
+import { useChainClock } from "@/lib/chainClock";
 
 const MIN_BOTTOM_HEIGHT = 180;
 const MAX_BOTTOM_HEIGHT = 657;
@@ -53,9 +53,9 @@ export default function Discover() {
   const navigate = useNavigate();
   const symbol = (params.get("symbol") ?? "BTC").toUpperCase();
 
-  const now = useNow();
-  const block = getBlockNumber(now);
-  const rounds = getTimelineRounds(block);
+  const clock = useChainClock();
+  const block = clock.block;
+  const rounds = getTimelineRounds(block, clock.anchor);
   const active =
     rounds.find((round) => round.status === "betting") ?? rounds[0]!;
   const [selectedStartBlock, setSelectedStartBlock] = useState<number | null>(
@@ -69,7 +69,7 @@ export default function Discover() {
       betToken
         ? getBetPool(symbol, betToken.symbol, selected.startBlock)
         : Promise.resolve(null),
-    [symbol, betToken, selected.startBlock],
+    [symbol, betToken, selected.startBlock, clock.version],
   );
 
   const tokenState = useApi(() => getToken(symbol), [symbol]);
@@ -273,7 +273,7 @@ export default function Discover() {
             loading={holdersState.loading}
             roundNumber={selected.number}
             settled={selected.status === "settled"}
-            winner={selectedPoolState.data?.winner}
+            winner={selectedPoolState.data?.winner ?? undefined}
           />
         </div>
       </section>

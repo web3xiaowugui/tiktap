@@ -72,8 +72,12 @@ export interface BetPool {
   shortAmount: number;
   longParticipants: number;
   shortParticipants: number;
-  /** Deterministic mock outcome; the UI only reads it for settled rounds. */
-  winner: Side;
+  /** Settled rounds only; `null` while the round is still open (or refunded). */
+  winner: Side | null;
+  /** 链上 marketId（配了合约时才有）。 */
+  marketId?: number | null;
+  /** 单边池 / 作废轮：按原额退款。 */
+  refund?: boolean;
 }
 
 /** The current user's activity in one pari-mutuel round. */
@@ -87,6 +91,12 @@ export interface MyBet {
   longAmount: number;
   shortCount: number;
   shortAmount: number;
+  settled?: boolean;
+  refund?: boolean;
+  winner?: Side | null;
+  /** 已结算时可领回的数量（代币单位）。 */
+  claimable?: number;
+  claimed?: boolean;
 }
 
 export interface Candle {
@@ -155,6 +165,8 @@ export interface BetHolding {
   time: string;
   /** Offset from the active round: 0 bets now, -1 waits for settlement, -2 settled. */
   roundOffset: number;
+  /** 该轮的起始块（链上真值）。 */
+  roundStartBlock?: number;
 }
 
 export interface Position {

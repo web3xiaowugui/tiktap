@@ -1,14 +1,75 @@
 import { useEffect, useState } from "react";
-import { getBetQuickAmounts, saveBetQuickAmounts } from "@/api";
+import { useSearchParams } from "react-router-dom";
+import { faucet, getBetQuickAmounts, placeBet, saveBetQuickAmounts } from "@/api";
 import { YourPositions } from "@/components/YourPositions";
+import { useAuth } from "@/context/AuthContext";
 import { useBetToken } from "@/context/BetTokenContext";
 import { useToast } from "@/context/ToastContext";
 import { cn } from "@/lib/cn";
+import { useChainClock } from "@/lib/chainClock";
 import { fmtQty, fmtUsd } from "@/lib/format";
 
 export function TradePanel() {
-  const { selected: selectedBetToken } = useBetToken();
+  const { selected: selectedBetToken, reloadBalances } = useBetToken();
   const { push } = useToast();
+  const { user } = useAuth();
+  const clock = useChainClock();
+  const [params] = useSearchParams();
+  const symbol = (params.get("symbol") ?? "BTC").toUpperCase();
+
+  const [pendingSide, setPendingSide] = useState<"long" | "short" | null>(null);
+  const [funding, setFunding] = useState(false);
+
+  const submitBet = async (side: "long" | "short") => {
+    if (!selectedBetToken) return;
+    if (!user?.address) {
+      push("托管地址还没准备好，稍后再试", "error");
+      return;
+    }
+    const raw = amount.trim();
+    if (!raw || Number(raw) <= 0) {
+      push("请输入下注数量", "error");
+      return;
+    }
+    if (!clock.bettingOpen) {
+      push("本轮已封盘，等下一轮再下注", "error");
+      return;
+    }
+
+    setPendingSide(side);
+    try {
+      await placeBet({
+        address: user.address,
+        market: symbol,
+        betToken: selectedBetToken.symbol,
+        side,
+        amount: raw,
+      });
+      push(`已下单：${side === "long" ? "Tap涨" : "Tap跌"} ${raw} ${selectedBetToken.symbol}`, "success");
+      setAmount("");
+      setPercent(0);
+      reloadBalances();
+      clock.refresh();
+    } catch (error) {
+      push(error instanceof Error ? error.message : "下注失败", "error");
+    } finally {
+      setPendingSide(null);
+    }
+  };
+
+  const requestTokens = async () => {
+    if (!selectedBetToken || !user?.address) return;
+    setFunding(true);
+    try {
+      await faucet({ address: user.address, betToken: selectedBetToken.symbol, amount: "100" });
+      push(`已领取 100 ${selectedBetToken.symbol}`, "success");
+      reloadBalances();
+    } catch (error) {
+      push(error instanceof Error ? error.message : "领取失败", "error");
+    } finally {
+      setFunding(false);
+    }
+  };
 
   const [amount, setAmount] = useState("");
   const [percent, setPercent] = useState(0);
@@ -121,10 +182,21 @@ export function TradePanel() {
       <div className="p-3">
         <div className="mt-2 flex items-center justify-between text-[12px] text-muted2">
           <span>可用</span>
-          <span className="num">
-            {selectedBetToken
-              ? `${fmtQty(selectedBetToken.balance)} ${selectedBetToken.symbol}`
-              : "—"}
+          <span className="flex items-center gap-2">
+            <span className="num">
+              {selectedBetToken
+                ? `${fmtQty(selectedBetToken.balance)} ${selectedBetToken.symbol}`
+                : "—"}
+            </span>
+            <button
+              type="button"
+              onClick={() => void requestTokens()}
+              disabled={funding || !user?.address}
+              title={`领 100 ${selectedBetToken?.symbol ?? "代币"}`}
+              className="rounded border border-line px-1.5 py-0.5 text-[11px] font-bold text-muted2 transition hover:border-line2 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {funding ? "领取中…" : "领币"}
+            </button>
           </span>
         </div>
 
@@ -252,29 +324,25 @@ export function TradePanel() {
         <div className="mt-3 grid grid-cols-2 gap-2">
           <button
             type="button"
-            onClick={() => {
-              // TODO: buy long
-            }}
-            className="h-9 rounded-md bg-up text-[14px] font-bold text-white shadow-[0_0_18px_rgba(46,189,133,0.18)] transition hover:brightness-110 active:brightness-95"
+            onClick={() => void submitBet("long")}
+            disabled={pendingSide !== null || !clock.bettingOpen}
+            className="h-9 rounded-md bg-up text-[14px] font-bold text-white shadow-[0_0_18px_rgba(46,189,133,0.18)] transition hover:brightness-110 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Tap涨
+            {pendingSide === "long" ? "提交中…" : "Tap涨"}
           </button>
           <button
             type="button"
-            onClick={() => {
-              // TODO: buy short
-            }}
-            className="h-9 rounded-md bg-down text-[14px] font-bold text-white shadow-[0_0_18px_rgba(246,70,93,0.18)] transition hover:brightness-110 active:brightness-95"
+            onClick={() => void submitBet("short")}
+            disabled={pendingSide !== null || !clock.bettingOpen}
+            className="h-9 rounded-md bg-down text-[14px] font-bold text-white shadow-[0_0_18px_rgba(246,70,93,0.18)] transition hover:brightness-110 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Tap跌
+            {pendingSide === "short" ? "提交中…" : "Tap跌"}
           </button>
         </div>
 
         <div className="mt-2 flex items-center justify-between text-[12px] text-muted2">
-          <span>手续费</span>
-          <span className="num">
-            {value > 0 ? fmtUsd(value * selectedBetTokenPrice * 0.00045) : "-"}
-          </span>
+          <span>{clock.bettingOpen ? `距封盘 ${clock.blocksToClose} 块` : "本轮已封盘"}</span>
+          <span className="num">手续费 0</span>
         </div>
       </div>
 

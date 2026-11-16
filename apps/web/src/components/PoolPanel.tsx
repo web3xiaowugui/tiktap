@@ -1,7 +1,10 @@
-import { getBetPool, getMyBet } from "@/api";
+import { useState } from "react";
+import { claimBet, getBetPool, getMyBet } from "@/api";
 import type { BetPool, BetToken } from "@/api/types";
 import { RoundTimeline } from "@/components/RoundTimeline";
+import { useAuth } from "@/context/AuthContext";
 import { useBetToken } from "@/context/BetTokenContext";
+import { useChainClock } from "@/lib/chainClock";
 import { cn } from "@/lib/cn";
 import { fmtQty } from "@/lib/format";
 import { getTimelineRounds, type TimelineRound } from "@/lib/rounds";
@@ -52,9 +55,10 @@ function PoolPanelBody({
     rounds.find((round) => round.status === "betting") ?? rounds[0]!;
   const selected =
     rounds.find((round) => round.startBlock === selectedStartBlock) ?? active;
+  const clock = useChainClock();
   const poolState = useApi(
     () => getBetPool(symbol, betToken.symbol, selected.startBlock),
-    [symbol, betToken.symbol, selected.startBlock],
+    [symbol, betToken.symbol, selected.startBlock, clock.version],
   );
   const pool = poolState.data;
 
@@ -117,7 +121,7 @@ function PoolDetails({
           share={longShare}
           participants={pool.longParticipants}
           payout={longPayout}
-          winner={round.status === "settled" ? pool.winner : undefined}
+          winner={round.status === "settled" ? pool.winner ?? undefined : undefined}
         />
         <PoolStat
           tone="short"
@@ -126,7 +130,7 @@ function PoolDetails({
           share={shortShare}
           participants={pool.shortParticipants}
           payout={shortPayout}
-          winner={round.status === "settled" ? pool.winner : undefined}
+          winner={round.status === "settled" ? pool.winner ?? undefined : undefined}
         />
         <PoolStat
           tone="total"
@@ -157,9 +161,12 @@ function MyBetPanel({
   pool: BetPool;
   betToken: BetToken;
 }) {
+  const { user } = useAuth();
+  const clock = useChainClock();
+  const [claiming, setClaiming] = useState(false);
   const myBetState = useApi(
-    () => getMyBet(symbol, betToken.symbol, round.startBlock),
-    [symbol, betToken.symbol, round.startBlock],
+    () => getMyBet(symbol, betToken.symbol, round.startBlock, user?.address),
+    [symbol, betToken.symbol, round.startBlock, user?.address, clock.version],
   );
   const myBet = myBetState.data;
 
@@ -211,19 +218,29 @@ function MyBetPanel({
     myBet.shortAmount > 0 && pool.shortAmount > 0
       ? (myBet.shortAmount / pool.shortAmount) * total
       : 0;
-  const settled = round.status === "settled";
+  const settled = myBet.settled ?? round.status === "settled";
+  const refunded = myBet.refund === true;
   const bothSides = myBet.longCount > 0 && myBet.shortCount > 0;
+  const expectedPayout =
+    pool.winner === "long" ? longExpected : pool.winner === "short" ? shortExpected : 0;
   const actualPayout = settled
-    ? pool.winner === "long"
-      ? longExpected
-      : shortExpected
+    ? refunded
+      ? myBet.amount
+      : myBet.claimable && myBet.claimable > 0
+        ? myBet.claimable
+        : expectedPayout
     : 0;
   const pnl = actualPayout - myBet.amount;
   const longProfit = longExpected - myBet.amount;
   const shortProfit = shortExpected - myBet.amount;
   const won =
     settled &&
-    (pool.winner === "long" ? myBet.longCount > 0 : myBet.shortCount > 0);
+    !refunded &&
+    (pool.winner === "long"
+      ? myBet.longCount > 0
+      : pool.winner === "short"
+        ? myBet.shortCount > 0
+        : false);
 
   return (
     <div className="mt-5 rounded-lg border border-line bg-panel2/30 p-3">
@@ -339,6 +356,39 @@ function MyBetPanel({
         </tbody>
       </table>
       </div>
+
+      {settled && (myBet.claimable ?? 0) > 0 && !myBet.claimed && (
+        <button
+          type="button"
+          disabled={claiming}
+          onClick={async () => {
+            if (!user?.address || !clock.anchor) return;
+            const roundIndex = (round.startBlock - clock.anchor) / 600;
+            setClaiming(true);
+            try {
+              await claimBet({
+                address: user.address,
+                market: symbol,
+                betToken: betToken.symbol,
+                roundIndex,
+              });
+              myBetState.reload();
+              clock.refresh();
+            } catch {
+              myBetState.reload();
+            } finally {
+              setClaiming(false);
+            }
+          }}
+          className="mt-3 h-9 w-full rounded-md bg-brand text-[14px] font-bold text-white transition hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {claiming ? "领取中…" : `领取 ${formatAmount(myBet.claimable ?? 0)}`}
+        </button>
+      )}
+
+      {settled && myBet.claimed && (
+        <p className="mt-2 text-center text-[11px] text-muted2">本轮奖励已领取</p>
+      )}
     </div>
   );
 }
