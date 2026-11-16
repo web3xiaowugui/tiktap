@@ -102,7 +102,7 @@ export function TopBar() {
             )}
             aria-label="账户菜单"
           >
-            <Avatar name={user?.name ?? "F"} gradient={DEMO_AVATAR} size={27} />
+            <Avatar name={user?.name ?? "F"} gradient={DEMO_AVATAR} size={32} />
           </button>
 
           {menuOpen && (
