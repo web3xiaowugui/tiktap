@@ -187,6 +187,11 @@ export async function settleMarket(
     downWei: downAmount.toString(),
   });
 
+  // 结算完直接替用户代领（托管模式，用户不用自己点）
+  if (process.env.AUTO_CLAIM !== "0") {
+    await claimRoundForUsers(db, cfg, marketId, roundIndex);
+  }
+
   return {
     marketId,
     symbol: row.symbol,
@@ -354,15 +359,28 @@ export function startAutoSettler(db: Db, cfg: ChainConfig, intervalMs = 3_000): 
 
       for (const roundIndex of finishedRounds) {
         const unsettled = await marketsWithUnsettledBets(db, cfg, roundIndex);
-        if (unsettled.length === 0) continue;
 
-        const result = await settleRound(db, cfg, roundIndex);
-        const sent = result.markets.filter((item) => item.txHash);
-        if (sent.length > 0) {
-          console.log(
-            `[settle] round ${roundIndex} 结算 ${sent.length} 个市场：` +
-              sent.map((item) => `${item.symbol}/${item.betToken}=${item.winner === 0 ? "long" : "short"}`).join(", "),
-          );
+        if (unsettled.length > 0) {
+          const result = await settleRound(db, cfg, roundIndex);
+          const sent = result.markets.filter((item) => item.txHash);
+          if (sent.length > 0) {
+            console.log(
+              `[settle] round ${roundIndex} 结算 ${sent.length} 个市场：` +
+                sent.map((item) => `${item.symbol}/${item.betToken}=${item.winner === 0 ? "long" : "short"}`).join(", "),
+            );
+          }
+        }
+
+        // 兜底：不管这轮是刚结算的还是早结算过但有人没领到，都在这里补领一次
+        if (process.env.AUTO_CLAIM !== "0") {
+          for (const row of listMarkets(db)) {
+            const again = await claimRoundForUsers(db, cfg, row.market_id, roundIndex);
+            if (again.claimed > 0) {
+              console.log(
+                `[claim] round ${roundIndex} market ${row.market_id} 自动代领 ${again.claimed} 个地址`,
+              );
+            }
+          }
         }
       }
     } catch (error) {
@@ -427,4 +445,43 @@ export async function backfillBetResults(db: Db, cfg: ChainConfig): Promise<numb
     filled += 1;
   }
   return filled;
+}
+/** 自动领奖：结算后由后端用用户托管私钥代领，用户不用点。 */
+const claimAttempts = new Map<string, number>();
+
+export async function claimRoundForUsers(
+  db: Db,
+  cfg: ChainConfig,
+  marketId: number,
+  roundIndex: number,
+): Promise<{ claimed: number; failed: number }> {
+  const rows = db
+    .prepare(
+      "SELECT DISTINCT address FROM bets " +
+        "WHERE market_id = ? AND round_id = ? AND claimed_at IS NULL " +
+        "AND payout_wei IS NOT NULL AND payout_wei != '0'",
+    )
+    .all(marketId, roundIndex) as Array<{ address: string }>;
+
+  let claimed = 0;
+  let failed = 0;
+
+  for (const row of rows) {
+    const key = `${marketId}:${roundIndex}:${row.address}`;
+    if ((claimAttempts.get(key) ?? 0) + 60_000 > Date.now()) continue;
+    claimAttempts.set(key, Date.now());
+
+    try {
+      await claimForUser(db, cfg, row.address, marketId, roundIndex);
+      claimed += 1;
+    } catch (error) {
+      failed += 1;
+      console.warn(
+        `[claim] ${row.address} 第 ${roundIndex} 轮 market ${marketId} 代领失败：`,
+        describe(error),
+      );
+    }
+  }
+
+  return { claimed, failed };
 }
