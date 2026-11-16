@@ -21,7 +21,7 @@ import {
   winnerFromLabel,
 } from "./settlement.ts";
 import { readConfig } from "./tx.ts";
-import { getRoundPrice } from "./round-prices.ts";
+import { getRoundPrice, ensureRoundPrices } from "./round-prices.ts";
 import { readMarketActivity } from "./activity.ts";
 import { readRoundHolders } from "./holders.ts";
 import { createOpinion, readOpinions, readOpinionsBySymbol } from "./opinions.ts";
@@ -203,14 +203,24 @@ export function registerRoutes(router: Router, db: Db): void {
   });
 
   /**
-   * 某一轮的锁定价格 / 开奖价格（只读库里已写入的值，不触发行情请求）。
+   * 某一轮的锁定价格 / 开奖价格。
    * round 传轮次起始块，和池子接口用同一个口径。
+   * 已结束但库里还缺开奖价的轮次（例如本轮没人下注，自动结算不会碰它），
+   * 这里按需补一次；补不到就保持 null，不影响页面加载。
    */
   router.get("/api/round-price", async ({ query }) => {
     const symbol = (query.get("symbol") ?? "BTC").toUpperCase();
     const roundStartBlock = readRoundBlock(query);
     const roundIndex = roundIndexFor(roundStartBlock);
-    const row = getRoundPrice(db, symbol, roundIndex);
+    let row = getRoundPrice(db, symbol, roundIndex);
+    const cfg = readConfig();
+    if (cfg.market && (row === null || row.settlePrice === null)) {
+      try {
+        row = await ensureRoundPrices(db, cfg, symbol, roundIndex);
+      } catch {
+        // 行情还没覆盖 / 链上还没结束：保留已有值，下次请求再试
+      }
+    }
     return {
       symbol,
       roundIndex,

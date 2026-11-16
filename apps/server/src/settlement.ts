@@ -355,8 +355,6 @@ export async function claimForUser(
 export function startAutoSettler(db: Db, cfg: ChainConfig, intervalMs = 3_000): void {
   let busy = false;
   /** 每个 (标的, 轮次) 最多 30s 试一次行情，避免每 3s 打一次接口。 */
-  const lockAttempts = new Map<string, number>();
-
   const tick = async () => {
     if (busy) return;
     busy = true;
@@ -365,14 +363,24 @@ export function startAutoSettler(db: Db, cfg: ChainConfig, intervalMs = 3_000): 
 
       // 先把「当前轮」的锁定价格写下来（轮首那根 1m K 线收盘后就能写）
       const symbols = [...new Set(listMarkets(db).map((row) => row.symbol))];
+      const priceAttempts = new Map<string, number>();
+      const recentRounds = [
+        info.currentRound,
+        info.currentRound - 1,
+        info.currentRound - 2,
+        info.currentRound - 3,
+      ].filter((round) => round >= 0);
       for (const symbol of symbols) {
-        const key = `${symbol}:${info.currentRound}`;
-        if ((lockAttempts.get(key) ?? 0) + 30_000 > Date.now()) continue;
-        lockAttempts.set(key, Date.now());
-        try {
-          await ensureRoundPrices(db, cfg, symbol, info.currentRound);
-        } catch {
-          // 还没到那一分钟就跳过，之后 tick 再补
+        for (const roundIndex of recentRounds) {
+          const key = `${symbol}:${roundIndex}`;
+          if ((priceAttempts.get(key) ?? 0) + 30_000 > Date.now()) continue;
+          priceAttempts.set(key, Date.now());
+          try {
+            // 当前轮只补锁定价；最近 3 轮补上开奖价，保证已开奖轮次 K 线有价格线
+            await ensureRoundPrices(db, cfg, symbol, roundIndex);
+          } catch {
+            // 行情还没覆盖那一分钟就跳过，之后 tick 再补
+          }
         }
       }
 
