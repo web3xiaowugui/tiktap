@@ -43,6 +43,16 @@ CREATE TABLE IF NOT EXISTS pools (
   PRIMARY KEY (market_id, round_id, side)
 );
 
+-- 市场 = 标的 × 下注代币（类似交易对），market_id 是链上 PoolMarket 的索引
+CREATE TABLE IF NOT EXISTS markets (
+  market_id     INTEGER PRIMARY KEY,
+  symbol        TEXT NOT NULL DEFAULT '',
+  bet_token     TEXT NOT NULL DEFAULT '',
+  token_address TEXT,
+  enabled       INTEGER NOT NULL DEFAULT 1,
+  sort_order    INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (symbol, bet_token)
+);
 -- 每轮结算结果
 CREATE TABLE IF NOT EXISTS rounds (
   market_id    TEXT NOT NULL,

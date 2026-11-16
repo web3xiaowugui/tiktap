@@ -7,7 +7,15 @@ import {TikTapToken} from "../src/TikTapToken.sol";
 
 contract PoolMarketTest is Test {
     PoolMarket internal market;
-    TikTapToken internal token;
+
+    /// 三个下注代币：TEST（我们的体验币）/ OKB / BEM。
+    TikTapToken internal testToken;
+    TikTapToken internal okbToken;
+    TikTapToken internal bemToken;
+
+    uint8 internal constant MARKET_TEST = 1; // BTC/TEST
+    uint8 internal constant MARKET_OKB = 2; // BTC/OKB
+    uint8 internal constant MARKET_BEM = 3; // BTC/BEM
 
     address internal operatorAddr = address(0xBEEF);
     address internal alice = address(0xA11CE);
@@ -24,31 +32,41 @@ contract PoolMarketTest is Test {
     function setUp() public {
         vm.roll(ANCHOR);
 
-        token = new TikTapToken("TikTap", "TIK", CAP);
-        market = new PoolMarket(address(token), operatorAddr, ANCHOR);
+        testToken = new TikTapToken("TikTap Test", "TEST", CAP);
+        okbToken = new TikTapToken("OKB (mock)", "OKB", CAP);
+        bemToken = new TikTapToken("BEM (mock)", "BEM", CAP);
 
-        _fund(alice, 1000 ether);
-        _fund(bob, 1000 ether);
-        _fund(carol, 1000 ether);
+        market = new PoolMarket(operatorAddr, ANCHOR);
 
         vm.startPrank(operatorAddr);
+        market.setMarket(MARKET_TEST, address(testToken), true);
+        market.setMarket(MARKET_OKB, address(okbToken), true);
+        market.setMarket(MARKET_BEM, address(bemToken), true);
         market.setAllowed(alice, true);
         market.setAllowed(bob, true);
         vm.stopPrank();
+
+        _fund(alice);
+        _fund(bob);
+        _fund(carol);
     }
 
     // ------------------------------------------------------------- helpers
 
-    function _fund(address who, uint256 amount) internal {
+    function _fund(address who) internal {
         vm.startPrank(who);
-        token.mint(amount);
-        token.approve(address(market), type(uint256).max);
+        testToken.mint(CAP);
+        testToken.approve(address(market), type(uint256).max);
+        okbToken.mint(CAP);
+        okbToken.approve(address(market), type(uint256).max);
+        bemToken.mint(CAP);
+        bemToken.approve(address(market), type(uint256).max);
         vm.stopPrank();
     }
 
-    function _bet(address who, uint8 side, uint256 amount) internal {
+    function _bet(address who, uint8 marketId, uint8 side, uint256 amount) internal {
         vm.prank(who);
-        market.bet(side, amount);
+        market.bet(marketId, side, amount);
     }
 
     function _endRound(uint256 roundIndex) internal {
@@ -80,38 +98,41 @@ contract PoolMarketTest is Test {
         vm.roll(ANCHOR + 300);
         vm.prank(alice);
         vm.expectRevert(PoolMarket.BettingClosed.selector);
-        market.bet(UP, 1 ether);
+        market.bet(MARKET_TEST, UP, 1 ether);
     }
 
     // -------------------------------------------------------------- 下注
 
     function testBetMovesTokensAndUpdatesPool() public {
-        _bet(alice, UP, 100 ether);
+        _bet(alice, MARKET_TEST, UP, 100 ether);
 
-        assertEq(token.balanceOf(alice), 900 ether);
-        assertEq(token.balanceOf(address(market)), 100 ether);
+        assertEq(testToken.balanceOf(alice), 900 ether);
+        assertEq(testToken.balanceOf(address(market)), 100 ether);
 
-        (uint256 upAmount, uint256 downAmount, uint8 winner, bool settled) = market.pools(0);
+        (uint256 upAmount, uint256 downAmount, uint8 winner, bool settled) = market.pools(
+            0,
+            MARKET_TEST
+        );
         assertEq(upAmount, 100 ether);
         assertEq(downAmount, 0);
         assertEq(winner, 0);
         assertFalse(settled);
 
-        (uint256 up, uint256 down) = market.stakeOf(0, alice);
+        (uint256 up, uint256 down) = market.stakeOf(MARKET_TEST, 0, alice);
         assertEq(up, 100 ether);
         assertEq(down, 0);
     }
 
     function testBetAccumulatesWithinRound() public {
-        _bet(alice, UP, 10 ether);
-        _bet(alice, DOWN, 20 ether);
-        _bet(bob, UP, 30 ether);
+        _bet(alice, MARKET_TEST, UP, 10 ether);
+        _bet(alice, MARKET_TEST, DOWN, 20 ether);
+        _bet(bob, MARKET_TEST, UP, 30 ether);
 
-        (uint256 up, uint256 down) = market.stakeOf(0, alice);
+        (uint256 up, uint256 down) = market.stakeOf(MARKET_TEST, 0, alice);
         assertEq(up, 10 ether);
         assertEq(down, 20 ether);
 
-        (uint256 upAmount, uint256 downAmount, , ) = market.pools(0);
+        (uint256 upAmount, uint256 downAmount, , ) = market.pools(0, MARKET_TEST);
         assertEq(upAmount, 40 ether);
         assertEq(downAmount, 20 ether);
     }
@@ -119,35 +140,110 @@ contract PoolMarketTest is Test {
     function testBetByNonAllowedReverts() public {
         vm.prank(carol);
         vm.expectRevert(PoolMarket.NotAllowed.selector);
-        market.bet(UP, 1 ether);
+        market.bet(MARKET_TEST, UP, 1 ether);
     }
 
     function testBetBadSideReverts() public {
         vm.prank(alice);
         vm.expectRevert(PoolMarket.BadSide.selector);
-        market.bet(3, 1 ether);
+        market.bet(MARKET_TEST, 3, 1 ether);
     }
 
     function testBetZeroReverts() public {
         vm.prank(alice);
         vm.expectRevert(PoolMarket.ZeroAmount.selector);
-        market.bet(UP, 0);
+        market.bet(MARKET_TEST, UP, 0);
+    }
+
+    function testBetOnUnknownMarketReverts() public {
+        vm.prank(alice);
+        vm.expectRevert(PoolMarket.UnknownMarket.selector);
+        market.bet(9, UP, 1 ether);
+    }
+
+    function testBetOnDisabledMarketReverts() public {
+        vm.prank(operatorAddr);
+        market.setMarket(MARKET_BEM, address(bemToken), false);
+
+        vm.prank(alice);
+        vm.expectRevert(PoolMarket.MarketDisabled.selector);
+        market.bet(MARKET_BEM, UP, 1 ether);
     }
 
     function testBetWithoutApprovalReverts() public {
-        // 全新地址：已放行、有钱，但没有 approve，pull 走不通。
         address dave = makeAddr("dave");
         vm.prank(operatorAddr);
         market.setAllowed(dave, true);
 
         vm.prank(dave);
-        token.mint(10 ether);
+        testToken.mint(10 ether);
 
         vm.prank(dave);
         vm.expectRevert(
             abi.encodeWithSelector(TikTapToken.InsufficientAllowance.selector, 0, 1 ether)
         );
-        market.bet(UP, 1 ether);
+        market.bet(MARKET_TEST, UP, 1 ether);
+    }
+
+    // -------------------------------------------------- 市场之间互不干扰
+
+    /// 同一轮里，BTC/OKB 和 BTC/BEM 是两个独立池子，各自用自己的代币。
+    function testMarketsInSameRoundAreIsolated() public {
+        _bet(alice, MARKET_OKB, UP, 100 ether);
+        _bet(bob, MARKET_OKB, DOWN, 50 ether);
+        _bet(alice, MARKET_BEM, UP, 70 ether);
+
+        (uint256 upOkb, uint256 downOkb, , ) = market.pools(0, MARKET_OKB);
+        assertEq(upOkb, 100 ether);
+        assertEq(downOkb, 50 ether);
+
+        (uint256 upBem, uint256 downBem, , ) = market.pools(0, MARKET_BEM);
+        assertEq(upBem, 70 ether);
+        assertEq(downBem, 0);
+
+        // 两个池子的钱分别躺在各自代币的余额里。
+        assertEq(okbToken.balanceOf(address(market)), 150 ether);
+        assertEq(bemToken.balanceOf(address(market)), 70 ether);
+        assertEq(testToken.balanceOf(address(market)), 0);
+    }
+
+    function testSettleOneMarketLeavesOtherUntouched() public {
+        _bet(alice, MARKET_OKB, UP, 100 ether);
+        _bet(bob, MARKET_OKB, DOWN, 50 ether);
+        _bet(alice, MARKET_BEM, UP, 70 ether);
+
+        _endRound(0);
+        vm.prank(operatorAddr);
+        market.settle(MARKET_OKB, 0, UP);
+
+        (, , , bool okbSettled) = market.pools(0, MARKET_OKB);
+        (, , , bool bemSettled) = market.pools(0, MARKET_BEM);
+        assertTrue(okbSettled);
+        assertFalse(bemSettled);
+
+        // OKB 市场派奖，付的是 OKB 代币。
+        uint256 before = okbToken.balanceOf(alice);
+        vm.prank(alice);
+        market.claim(MARKET_OKB, 0);
+        assertEq(okbToken.balanceOf(alice) - before, 150 ether);
+        assertEq(okbToken.balanceOf(address(market)), 0);
+
+        // BEM 市场的钱没动。
+        assertEq(bemToken.balanceOf(address(market)), 70 ether);
+    }
+
+    function testClaimOnWrongMarketReverts() public {
+        _bet(alice, MARKET_OKB, UP, 100 ether);
+        _bet(bob, MARKET_OKB, DOWN, 50 ether);
+
+        _endRound(0);
+        vm.prank(operatorAddr);
+        market.settle(MARKET_OKB, 0, UP);
+
+        // alice 在 BEM 市场没押过，也没结算。
+        vm.prank(alice);
+        vm.expectRevert(PoolMarket.NotSettled.selector);
+        market.claim(MARKET_BEM, 0);
     }
 
     // -------------------------------------------------------------- 结算
@@ -156,22 +252,22 @@ contract PoolMarketTest is Test {
         _endRound(0);
         vm.prank(alice);
         vm.expectRevert(PoolMarket.NotOperator.selector);
-        market.settle(0, UP);
+        market.settle(MARKET_TEST, 0, UP);
     }
 
     function testSettleBeforeRoundEndReverts() public {
         vm.roll(ANCHOR + 599);
         vm.prank(operatorAddr);
         vm.expectRevert(PoolMarket.RoundNotFinished.selector);
-        market.settle(0, UP);
+        market.settle(MARKET_TEST, 0, UP);
     }
 
     function testDoubleSettleReverts() public {
         _endRound(0);
         vm.startPrank(operatorAddr);
-        market.settle(0, UP);
+        market.settle(MARKET_TEST, 0, UP);
         vm.expectRevert(PoolMarket.AlreadySettled.selector);
-        market.settle(0, UP);
+        market.settle(MARKET_TEST, 0, UP);
         vm.stopPrank();
     }
 
@@ -179,188 +275,183 @@ contract PoolMarketTest is Test {
         _endRound(0);
         vm.prank(operatorAddr);
         vm.expectRevert(PoolMarket.BadSide.selector);
-        market.settle(0, 3);
+        market.settle(MARKET_TEST, 0, 3);
     }
 
     // -------------------------------------------------------------- 派奖
 
     function testWinnerTakesWholePot() public {
-        _bet(alice, UP, 400 ether);
-        _bet(bob, DOWN, 600 ether);
+        _bet(alice, MARKET_OKB, UP, 400 ether);
+        _bet(bob, MARKET_OKB, DOWN, 600 ether);
 
         _endRound(0);
         vm.prank(operatorAddr);
-        market.settle(0, UP);
+        market.settle(MARKET_OKB, 0, UP);
 
-        uint256 before = token.balanceOf(alice);
+        uint256 before = okbToken.balanceOf(alice);
         vm.prank(alice);
-        market.claim(0);
+        market.claim(MARKET_OKB, 0);
 
-        // 池子总共 1000，赢家只有 alice 押了 400，所以拿到全部 1000。
-        assertEq(token.balanceOf(alice) - before, 1000 ether);
-        assertEq(token.balanceOf(address(market)), 0);
+        assertEq(okbToken.balanceOf(alice) - before, 1000 ether);
+        assertEq(okbToken.balanceOf(address(market)), 0);
     }
 
     function testWinnersSplitByShare() public {
-        _bet(alice, UP, 300 ether);
-        _bet(bob, DOWN, 700 ether);
-        // carol 也押涨，需要先放行。
+        _bet(alice, MARKET_OKB, UP, 300 ether);
+        _bet(bob, MARKET_OKB, DOWN, 700 ether);
         vm.prank(operatorAddr);
         market.setAllowed(carol, true);
-        _bet(carol, UP, 200 ether);
+        _bet(carol, MARKET_OKB, UP, 200 ether);
 
         _endRound(0);
         vm.prank(operatorAddr);
-        market.settle(0, DOWN);
+        market.settle(MARKET_OKB, 0, DOWN);
 
         uint256 pot = 1200 ether;
         uint256 downPool = 700 ether;
 
-        uint256 bobBefore = token.balanceOf(bob);
+        uint256 bobBefore = okbToken.balanceOf(bob);
         vm.prank(bob);
-        market.claim(0);
-        assertEq(token.balanceOf(bob) - bobBefore, pot * 700 ether / downPool);
+        market.claim(MARKET_OKB, 0);
+        assertEq(okbToken.balanceOf(bob) - bobBefore, pot * 700 ether / downPool);
 
-        // 押涨的人没份。
         vm.prank(alice);
         vm.expectRevert(PoolMarket.NothingToClaim.selector);
-        market.claim(0);
+        market.claim(MARKET_OKB, 0);
     }
 
     function testDoubleClaimReverts() public {
-        _bet(alice, UP, 100 ether);
-        _bet(bob, DOWN, 100 ether);
+        _bet(alice, MARKET_TEST, UP, 100 ether);
+        _bet(bob, MARKET_TEST, DOWN, 100 ether);
 
         _endRound(0);
         vm.prank(operatorAddr);
-        market.settle(0, UP);
+        market.settle(MARKET_TEST, 0, UP);
 
         vm.prank(alice);
-        market.claim(0);
+        market.claim(MARKET_TEST, 0);
 
         vm.prank(alice);
         vm.expectRevert(PoolMarket.AlreadyClaimed.selector);
-        market.claim(0);
+        market.claim(MARKET_TEST, 0);
     }
 
     function testClaimBeforeSettleReverts() public {
-        _bet(alice, UP, 100 ether);
+        _bet(alice, MARKET_TEST, UP, 100 ether);
         vm.prank(alice);
         vm.expectRevert(PoolMarket.NotSettled.selector);
-        market.claim(0);
+        market.claim(MARKET_TEST, 0);
     }
 
     // -------------------------------------------------------------- 退款
 
     function testOneSidedRoundRefunds() public {
-        _bet(alice, UP, 100 ether);
-        assertTrue(market.isVoidRound(0));
+        _bet(alice, MARKET_TEST, UP, 100 ether);
+        assertTrue(market.isVoidRound(MARKET_TEST, 0));
 
         _endRound(0);
-        // operator 报了 DOWN，但跌池是空的，仍然按退款处理。
         vm.prank(operatorAddr);
-        market.settle(0, DOWN);
+        market.settle(MARKET_TEST, 0, DOWN);
 
-        uint256 before = token.balanceOf(alice);
+        uint256 before = testToken.balanceOf(alice);
         vm.prank(alice);
-        market.claim(0);
-        assertEq(token.balanceOf(alice) - before, 100 ether);
-        assertEq(token.balanceOf(address(market)), 0);
+        market.claim(MARKET_TEST, 0);
+        assertEq(testToken.balanceOf(alice) - before, 100 ether);
+        assertEq(testToken.balanceOf(address(market)), 0);
     }
 
     function testVoidRoundRefundsBothSides() public {
-        _bet(alice, UP, 120 ether);
-        _bet(bob, DOWN, 80 ether);
+        _bet(alice, MARKET_TEST, UP, 120 ether);
+        _bet(bob, MARKET_TEST, DOWN, 80 ether);
 
         _endRound(0);
         vm.prank(operatorAddr);
-        market.settle(0, VOID);
+        market.settle(MARKET_TEST, 0, VOID);
 
-        uint256 aliceBefore = token.balanceOf(alice);
+        uint256 aliceBefore = testToken.balanceOf(alice);
         vm.prank(alice);
-        market.claim(0);
-        assertEq(token.balanceOf(alice) - aliceBefore, 120 ether);
+        market.claim(MARKET_TEST, 0);
+        assertEq(testToken.balanceOf(alice) - aliceBefore, 120 ether);
 
-        uint256 bobBefore = token.balanceOf(bob);
+        uint256 bobBefore = testToken.balanceOf(bob);
         vm.prank(bob);
-        market.claim(0);
-        assertEq(token.balanceOf(bob) - bobBefore, 80 ether);
+        market.claim(MARKET_TEST, 0);
+        assertEq(testToken.balanceOf(bob) - bobBefore, 80 ether);
 
-        assertEq(token.balanceOf(address(market)), 0);
+        assertEq(testToken.balanceOf(address(market)), 0);
+    }
+
+    // -------------------------------------------------------------- 预览
+
+    function testPreviewClaimMatchesActual() public {
+        _bet(alice, MARKET_OKB, UP, 400 ether);
+        _bet(bob, MARKET_OKB, DOWN, 600 ether);
+
+        _endRound(0);
+        vm.prank(operatorAddr);
+        market.settle(MARKET_OKB, 0, UP);
+
+        assertEq(market.previewClaim(MARKET_OKB, 0, alice), 1000 ether);
+        assertEq(market.previewClaim(MARKET_OKB, 0, bob), 0);
+    }
+
+    function testPreviewClaimBeforeSettleIsZero() public {
+        _bet(alice, MARKET_TEST, UP, 10 ether);
+        assertEq(market.previewClaim(MARKET_TEST, 0, alice), 0);
     }
 
     /// 派奖向下取整：除不尽的那点零头留在合约里，不做二次分配。
     function testRoundingDustStaysInContract() public {
-        _bet(alice, UP, 100);
-        _bet(bob, UP, 200);
+        _bet(alice, MARKET_TEST, UP, 100);
+        _bet(bob, MARKET_TEST, UP, 200);
         vm.prank(operatorAddr);
         market.setAllowed(carol, true);
-        _bet(carol, DOWN, 400);
+        _bet(carol, MARKET_TEST, DOWN, 400);
 
         _endRound(0);
         vm.prank(operatorAddr);
-        market.settle(0, UP);
+        market.settle(MARKET_TEST, 0, UP);
 
-        // pot = 700, 涨池 = 300：alice 100*700/300 = 233，bob 200*700/300 = 466。
-        assertEq(market.previewClaim(0, alice), 233);
-        assertEq(market.previewClaim(0, bob), 466);
+        assertEq(market.previewClaim(MARKET_TEST, 0, alice), 233);
+        assertEq(market.previewClaim(MARKET_TEST, 0, bob), 466);
 
         vm.prank(alice);
-        market.claim(0);
+        market.claim(MARKET_TEST, 0);
         vm.prank(bob);
-        market.claim(0);
+        market.claim(MARKET_TEST, 0);
 
-        // 700 入池，699 派出去，1 wei 零头留下。
-        assertEq(token.balanceOf(address(market)), 1);
-    }
-    // -------------------------------------------------------------- 预览
-
-    function testPreviewClaimMatchesActual() public {
-        _bet(alice, UP, 400 ether);
-        _bet(bob, DOWN, 600 ether);
-
-        _endRound(0);
-        vm.prank(operatorAddr);
-        market.settle(0, UP);
-
-        assertEq(market.previewClaim(0, alice), 1000 ether);
-        assertEq(market.previewClaim(0, bob), 0);
-    }
-
-    function testPreviewClaimBeforeSettleIsZero() public {
-        _bet(alice, UP, 10 ether);
-        assertEq(market.previewClaim(0, alice), 0);
+        assertEq(testToken.balanceOf(address(market)), 1);
     }
 
     // -------------------------------------------------------------- 跨轮
 
     function testNextRoundHasFreshState() public {
-        _bet(alice, UP, 50 ether);
+        _bet(alice, MARKET_TEST, UP, 50 ether);
 
         vm.roll(ANCHOR + 600);
-        _bet(bob, DOWN, 70 ether);
+        _bet(bob, MARKET_TEST, DOWN, 70 ether);
 
-        (uint256 upAmount, uint256 downAmount, , ) = market.pools(0);
+        (uint256 upAmount, uint256 downAmount, , ) = market.pools(0, MARKET_TEST);
         assertEq(upAmount, 50 ether);
         assertEq(downAmount, 0);
 
-        (uint256 up1, uint256 down1, , ) = market.pools(1);
+        (uint256 up1, uint256 down1, , ) = market.pools(1, MARKET_TEST);
         assertEq(up1, 0);
         assertEq(down1, 70 ether);
 
         _endRound(0);
         vm.prank(operatorAddr);
-        market.settle(0, UP);
+        market.settle(MARKET_TEST, 0, UP);
 
-        uint256 before = token.balanceOf(alice);
+        uint256 before = testToken.balanceOf(alice);
         vm.prank(alice);
-        market.claim(0);
-        assertEq(token.balanceOf(alice) - before, 50 ether);
+        market.claim(MARKET_TEST, 0);
+        assertEq(testToken.balanceOf(alice) - before, 50 ether);
     }
 
     // -------------------------------------------------------------- 权限
 
-    function testOwnerCanRotateOperator() public {
+    function testOperatorCanRotate() public {
         vm.prank(operatorAddr);
         market.setOperator(bob);
         assertEq(market.operator(), bob);
@@ -388,6 +479,18 @@ contract PoolMarketTest is Test {
 
         vm.prank(alice);
         vm.expectRevert(PoolMarket.NotAllowed.selector);
-        market.bet(UP, 1 ether);
+        market.bet(MARKET_TEST, UP, 1 ether);
+    }
+
+    function testReconfiguringMarketReplacesToken() public {
+        vm.prank(operatorAddr);
+        market.setMarket(MARKET_TEST, address(bemToken), true);
+
+        (address token, bool enabled) = market.markets(MARKET_TEST);
+        assertEq(token, address(bemToken));
+        assertTrue(enabled);
+
+        _bet(alice, MARKET_TEST, UP, 10 ether);
+        assertEq(bemToken.balanceOf(address(market)), 10 ether);
     }
 }

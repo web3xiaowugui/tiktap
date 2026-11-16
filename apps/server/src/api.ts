@@ -1,5 +1,6 @@
 import { readJson, HttpError, type Router } from "./http.ts";
 import type { Db } from "./db.ts";
+import { findMarket, listMarkets } from "./markets.ts";
 import {
   activityFor,
   BET_QUICK_AMOUNTS,
@@ -75,6 +76,9 @@ export function registerRoutes(router: Router, db: Db): void {
   router.get("/api/sidebar-menu", () => SIDEBAR_MENU);
   router.get("/api/leaderboard", () => LEADERBOARD);
 
+  // ---- 市场（标的 × 下注代币）----
+  router.get("/api/markets", () => listMarkets(db));
+
   // ---- 池子 ----
   router.get("/api/pools", ({ query }) => {
     const market = requireToken(query.get("market") ?? "").symbol;
@@ -86,7 +90,15 @@ export function registerRoutes(router: Router, db: Db): void {
       throw new HttpError(404, `暂无 ${market} / ${betToken} / ${roundStartBlock} 的池子数据`);
     }
 
-    return { marketSymbol: market, betTokenSymbol: betToken, roundStartBlock, ...pool };
+    // market_id 是链上 PoolMarket 的索引，下注接口要用它。
+    const row = findMarket(db, market, betToken);
+    return {
+      marketId: row?.market_id ?? null,
+      marketSymbol: market,
+      betTokenSymbol: betToken,
+      roundStartBlock,
+      ...pool,
+    };
   });
 
   router.get("/api/my-bet", ({ query }) => {

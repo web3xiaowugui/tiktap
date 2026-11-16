@@ -1,9 +1,11 @@
 import { registerRoutes } from "./api.ts";
 import { countUsers, openDb } from "./db.ts";
+import { seedMarkets } from "./markets.ts";
 import { Router, startServer } from "./http.ts";
 import { publicClient, RPC_URL, tryGetBlockNumber } from "./chain.ts";
 
 const db = openDb();
+seedMarkets(db);
 const router = new Router();
 
 router.get("/api/health", async () => {

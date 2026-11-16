@@ -34,7 +34,7 @@ curl http://127.0.0.1:8787/api/health
 - 运行时：Node 26 直接用类型剥离跑 `.ts`，**没有编译步骤**
 - 数据库：`node:sqlite`，单文件 `data/tiktap.db`，schema 在 `apps/server/schema.sql`（启动时幂等应用）
 - 链交互：`viem`（唯一运行时依赖）
-- 表结构：`users`（地址 + 加密私钥）、`txs`（txHash 唯一键、pending/confirmed/failed）、`pools`、`rounds`、`quick_amounts`
+- 表结构：`users`（地址 + 加密私钥）、`txs`（txHash 唯一键、pending/confirmed/failed）、`markets`（标的×下注代币 → marketId）、`pools`、`rounds`、`quick_amounts`
 
 #### 接口一览
 
@@ -70,7 +70,7 @@ curl http://127.0.0.1:8787/api/health
 | 文件 | 内容 |
 | --- | --- |
 | `contracts/src/TikTapToken.sol` | 下注代币，公开 `mint` + 单地址上限 |
-| `contracts/src/PoolMarket.sol` | 二元彩池：地址白名单、600 块一轮、前 300 块可下注、operator 结算、按份额派奖、单边退款 |
+| `contracts/src/PoolMarket.sol` | 二元彩池：市场 = 标的×下注代币（每市场绑一个 ERC20），池子 = (市场, 轮次)；白名单、600 块一轮、前 300 块可下注、operator 结算、按份额派奖、单边退款 |
 
 ```bash
 pnpm contracts:test      # 35 个用例，内存 EVM，约 10ms
@@ -84,7 +84,7 @@ Foundry v1.9.0 已安装（`forge` / `cast` / `anvil` / `chisel` 在 `%USERPROFI
 
 - **单一入口**：用户地址在库里托管，后端用用户私钥签名发交易；合约用 `allowed` 地址白名单挡住外部钱包（`bet` 显式校验，不依赖 `msg.sender` 的身份含义），`settle` 仅 operator。所有写操作必经后端，所以一定有 txHash，DB 与链不会漂。
 - **数据准确**：每笔写操作 `pending` 落库 → 查 receipt → `confirmed`；`tx_hash` 唯一键保证幂等；重启时补查超时的 pending，不需要链上索引器。
-- **轮次**：合约按区块高度派生 roundId（600 区块一轮，前 300 可下注），前端与后端共用 `packages/shared/src/rounds.ts` 的常量。
+- **轮次**：合约按区块高度派生 roundId（600 区块一轮，前 300 可下注），前端与后端共用 `packages/shared/src/rounds.ts` 的常量。`markets` 表（`symbol + bet_token → market_id`）是「前端 symbol ↔ 链上 marketId」的唯一映射。
 - **共享代码用转发壳**：`apps/web/src/api/types.ts` 与 `src/lib/rounds.ts` 只剩一行 `export * from "@tiktap/shared/…"`，所以全站 import 未改。
 
 ## 前端（apps/web）
