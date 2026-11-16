@@ -123,6 +123,10 @@ CREATE TABLE IF NOT EXISTS opinions (
   symbol     TEXT NOT NULL,
   bet_token  TEXT NOT NULL,
   round_id   INTEGER,
+  -- 发布那一刻的仓位快照（之后不可变）：总额（wei）+ 方向 + 笔数
+  bet_amount_wei TEXT,
+  bet_side   INTEGER,
+  bet_count  INTEGER,
   body       TEXT NOT NULL,
   side       INTEGER,
   created_at INTEGER NOT NULL

@@ -20,6 +20,9 @@ export function openDb(path: string = process.env.DB_PATH ?? defaultDbPath): Db 
   ensureColumn(db, "users", "x_user_id", "x_user_id TEXT");
   ensureColumn(db, "users", "x_handle", "x_handle TEXT");
   ensureColumn(db, "users", "x_name", "x_name TEXT");
+  ensureColumn(db, "opinions", "bet_amount_wei", "bet_amount_wei TEXT");
+  ensureColumn(db, "opinions", "bet_side", "bet_side INTEGER");
+  ensureColumn(db, "opinions", "bet_count", "bet_count INTEGER");
   db.exec(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_x ON users(x_user_id)",
   );

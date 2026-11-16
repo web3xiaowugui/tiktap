@@ -2,6 +2,7 @@ import { registerRoutes } from "./api.ts";
 import { countUsers, openDb } from "./db.ts";
 import { seedMarkets } from "./markets.ts";
 import { backfillBetsFromTxs } from "./bets.ts";
+import { backfillOpinionSnapshots } from "./opinions.ts";
 import { syncMarkets } from "./market-sync.ts";
 import { Router, startServer } from "./http.ts";
 import { publicClient, RPC_URL, tryGetBlockNumber } from "./chain.ts";
@@ -14,6 +15,11 @@ seedMarkets(db);
 const backfilledBets = backfillBetsFromTxs(db);
 if (backfilledBets > 0) {
   console.log(`[bets] 从 txs 回填了 ${backfilledBets} 条下注记录`);
+}
+
+const backfilledOpinions = backfillOpinionSnapshots(db);
+if (backfilledOpinions > 0) {
+  console.log(`[opinions] 回填了 ${backfilledOpinions} 条观点的仓位快照`);
 }
 
 const cfg = readConfig();

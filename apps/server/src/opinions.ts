@@ -5,8 +5,8 @@ import { displayName, formatAmount, gradientFor, relativeTime } from "./activity
 import { HttpError } from "./http.ts";
 
 /**
- * 市场级观点：存在 opinions 表，发布时顺带记录当时所在轮次（round_id）。
- * 列表默认返回这个市场的全部观点，前端可再按轮次筛选。
+ * 市场级观点。发布时把「当时的仓位」快照进这一行（bet_amount_wei / bet_side / bet_count），
+ * 之后不可变；列表只读 opinions 表，不再实时聚合 bets。
  */
 
 const MAX_BODY = 280;
@@ -23,53 +23,23 @@ interface OpinionRow {
   body: string;
   side: number | null;
   round_id: number | null;
+  bet_amount_wei: string | null;
+  bet_count: number | null;
   created_at: number;
   x_name: string | null;
   x_handle: string | null;
 }
 
-/**
- * 每条观点作者在「这个市场 + 这一轮」的下注总额（含单位），没有下注就不返回。
- */
-function stakesForOpinions(db: Db, rows: OpinionRow[]): Map<string, string> {
-  const pairs = new Map<string, { marketId: number; roundId: number; symbol: string; token: string }>();
-  for (const row of rows) {
-    if (row.round_id === null) continue;
-    pairs.set(`${row.market_id}:${row.round_id}`, {
-      marketId: row.market_id,
-      roundId: row.round_id,
-      symbol: row.symbol,
-      token: row.bet_token,
-    });
-  }
+const SELECT_COLUMNS =
+  "o.id, o.address, o.symbol, o.market_id, o.bet_token, o.body, o.side, o.round_id, " +
+  "o.bet_amount_wei, o.bet_count, o.created_at, u.x_name, u.x_handle";
 
-  const result = new Map<string, string>();
-  for (const pair of pairs.values()) {
-    const bets = db
-      .prepare(
-        "SELECT address, amount_wei FROM bets WHERE market_id = ? AND round_id = ?",
-      )
-      .all(pair.marketId, pair.roundId) as Array<{ address: string; amount_wei: string }>;
-
-    const byAddress = new Map<string, bigint>();
-    for (const bet of bets) {
-      const key = bet.address.toLowerCase();
-      byAddress.set(key, (byAddress.get(key) ?? 0n) + BigInt(bet.amount_wei || "0"));
-    }
-    for (const [address, wei] of byAddress) {
-      if (wei > 0n) {
-        result.set(`${address}:${pair.marketId}:${pair.roundId}`, `${formatAmount(wei.toString())} ${pair.token}`);
-      }
-    }
-  }
-  return result;
-}
-
-function toOpinion(row: OpinionRow, stakes: Map<string, string>): MarketOpinion {
-  const stake =
-    row.round_id === null
-      ? undefined
-      : stakes.get(`${row.address.toLowerCase()}:${row.market_id}:${row.round_id}`);
+function toOpinion(row: OpinionRow): MarketOpinion {
+  const amountWei = row.bet_amount_wei;
+  const betAmount =
+    amountWei && amountWei !== "0"
+      ? `${formatAmount(amountWei)} ${row.bet_token}`
+      : undefined;
 
   return {
     id: String(row.id),
@@ -85,7 +55,7 @@ function toOpinion(row: OpinionRow, stakes: Map<string, string>): MarketOpinion 
     roundId: row.round_id,
     symbol: row.symbol,
     betToken: row.bet_token,
-    betAmount: stake,
+    betAmount,
     time: relativeTime(row.created_at),
     followed: false,
   };
@@ -98,15 +68,12 @@ export function readOpinions(
 ): MarketOpinion[] {
   const rows = db
     .prepare(
-      "SELECT o.id, o.address, o.symbol, o.market_id, o.bet_token, o.body, o.side, o.round_id, o.created_at, " +
-        "u.x_name, u.x_handle " +
-        "FROM opinions o LEFT JOIN users u ON u.id = o.user_id " +
+      `SELECT ${SELECT_COLUMNS} FROM opinions o LEFT JOIN users u ON u.id = o.user_id ` +
         "WHERE o.market_id = ? ORDER BY o.created_at DESC LIMIT ?",
     )
     .all(marketRow.market_id, Math.min(Math.max(limit, 1), 200)) as unknown as OpinionRow[];
 
-  const stakes = stakesForOpinions(db, rows);
-  return rows.map((row) => toOpinion(row, stakes));
+  return rows.map(toOpinion);
 }
 
 /** 跨下注代币：某个标的的全部观点（左侧动态用）。 */
@@ -117,9 +84,7 @@ export function readOpinionsBySymbol(
 ): MarketOpinion[] {
   const rows = db
     .prepare(
-      "SELECT o.id, o.address, o.symbol, o.market_id, o.bet_token, o.body, o.side, o.round_id, o.created_at, " +
-        "u.x_name, u.x_handle " +
-        "FROM opinions o LEFT JOIN users u ON u.id = o.user_id " +
+      `SELECT ${SELECT_COLUMNS} FROM opinions o LEFT JOIN users u ON u.id = o.user_id ` +
         "WHERE o.symbol = ? ORDER BY o.created_at DESC LIMIT ?",
     )
     .all(
@@ -127,8 +92,105 @@ export function readOpinionsBySymbol(
       Math.min(Math.max(limit, 1), 200),
     ) as unknown as OpinionRow[];
 
-  const stakes = stakesForOpinions(db, rows);
-  return rows.map((row) => toOpinion(row, stakes));
+  return rows.map(toOpinion);
+}
+
+interface PositionSnapshot {
+  amountWei: string | null;
+  side: number | null;
+  count: number;
+}
+
+/**
+ * 某地址在该市场该轮的仓位快照；`before` 给了就只算这个时间点之前的下注，
+ * 老数据回填时用它还原「发布那一刻」的仓位。
+ */
+function readPosition(
+  db: Db,
+  marketId: number,
+  roundId: number,
+  address: string,
+  before?: number,
+): PositionSnapshot {
+  const bets = (
+    before === undefined
+      ? db
+          .prepare(
+            "SELECT side, amount_wei FROM bets WHERE market_id = ? AND round_id = ? AND address = ?",
+          )
+          .all(marketId, roundId, address.toLowerCase())
+      : db
+          .prepare(
+            "SELECT side, amount_wei FROM bets WHERE market_id = ? AND round_id = ? AND address = ? " +
+              "AND created_at <= ?",
+          )
+          .all(marketId, roundId, address.toLowerCase(), before)
+  ) as Array<{
+    side: number;
+    amount_wei: string;
+  }>;
+
+  if (bets.length === 0) return { amountWei: null, side: null, count: 0 };
+
+  let total = 0n;
+  const sides = new Set<number>();
+  for (const bet of bets) {
+    total += BigInt(bet.amount_wei || "0");
+    sides.add(bet.side);
+  }
+
+  return {
+    amountWei: total.toString(),
+    // 只押了一边才记方向，两边都押就是 null
+    side: sides.size === 1 ? [...sides][0] : null,
+    count: bets.length,
+  };
+}
+
+/** 发布这一刻这个地址在该市场该轮的仓位快照。 */
+function snapshotPosition(
+  db: Db,
+  marketId: number,
+  roundId: number | null,
+  address: string,
+): PositionSnapshot {
+  if (roundId === null) return { amountWei: null, side: null, count: 0 };
+  return readPosition(db, marketId, roundId, address);
+}
+
+/**
+ * 老数据补快照：改版前发布的观点 bet_count 为 NULL，按「发布时刻之前」的下注还原一次。
+ * 新观点即使是空仓也会写 bet_count = 0，所以这个迁移只会跑一遍。
+ */
+export function backfillOpinionSnapshots(db: Db): number {
+  const rows = db
+    .prepare(
+      "SELECT id, market_id, round_id, address, created_at FROM opinions " +
+        "WHERE bet_count IS NULL AND round_id IS NOT NULL",
+    )
+    .all() as Array<{
+    id: number;
+    market_id: number;
+    round_id: number;
+    address: string;
+    created_at: number;
+  }>;
+  if (rows.length === 0) return 0;
+
+  const update = db.prepare(
+    "UPDATE opinions SET bet_amount_wei = ?, bet_side = ?, bet_count = ? WHERE id = ?",
+  );
+  for (const row of rows) {
+    const position = readPosition(
+      db,
+      row.market_id,
+      row.round_id,
+      row.address,
+      row.created_at,
+    );
+    update.run(position.amountWei ?? "0", position.side, position.count, row.id);
+  }
+  return rows.length;
 }
 
 export function createOpinion(
@@ -156,10 +218,14 @@ export function createOpinion(
   if (input.side === "long") side = 0;
   else if (input.side === "short") side = 1;
 
+  const roundId = input.roundId ?? null;
+  const snapshot = snapshotPosition(db, marketRow.market_id, roundId, user.address);
+
   const result = db
     .prepare(
-      "INSERT INTO opinions (user_id, address, market_id, symbol, bet_token, round_id, body, side, created_at) " +
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO opinions (user_id, address, market_id, symbol, bet_token, round_id, " +
+        "bet_amount_wei, bet_side, bet_count, body, side, created_at) " +
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .run(
       user.id,
@@ -167,7 +233,10 @@ export function createOpinion(
       marketRow.market_id,
       marketRow.symbol,
       marketRow.bet_token,
-      input.roundId ?? null,
+      roundId,
+      snapshot.amountWei,
+      snapshot.side,
+      snapshot.count,
       body,
       side,
       now,
@@ -185,9 +254,13 @@ export function createOpinion(
     avatar: gradientFor(user.address),
     body,
     side: side === null ? null : side === 0 ? "long" : "short",
-    roundId: input.roundId ?? null,
+    roundId,
     symbol: marketRow.symbol,
     betToken: marketRow.bet_token,
+    betAmount:
+      snapshot.amountWei && snapshot.amountWei !== "0"
+        ? `${formatAmount(snapshot.amountWei)} ${marketRow.bet_token}`
+        : undefined,
     time: relativeTime(now),
     followed: false,
   };
