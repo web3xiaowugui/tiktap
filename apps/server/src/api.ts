@@ -24,7 +24,7 @@ import { readConfig } from "./tx.ts";
 import { getRoundPrice } from "./round-prices.ts";
 import { readMarketActivity } from "./activity.ts";
 import { readRoundHolders } from "./holders.ts";
-import { createOpinion, readOpinions } from "./opinions.ts";
+import { createOpinion, readOpinions, readOpinionsBySymbol } from "./opinions.ts";
 import { listBets } from "./bets.ts";
 import {
   marketFor,
@@ -372,10 +372,15 @@ export function registerRoutes(router: Router, db: Db): void {
   // ---- 观点（市场级；发布时记录当时轮次）----
   router.get("/api/opinions", ({ query }) => {
     const symbol = requireToken(query.get("symbol") ?? "").symbol;
-    const betToken = requireBetToken(query.get("token") ?? "TEST").symbol;
     const limit = Number(query.get("limit") ?? 50);
     if (!readConfig().market) return [];
 
+    const rawToken = query.get("token");
+    if (!rawToken) {
+      // 没给代币 → 这个标的的全部观点（左侧动态用）
+      return readOpinionsBySymbol(db, symbol, limit);
+    }
+    const betToken = requireBetToken(rawToken).symbol;
     const row = marketFor(db, symbol, betToken);
     return readOpinions(db, row, limit);
   });

@@ -141,11 +141,11 @@ export async function getHolders(
 
 export async function getOpinions(
   symbol: string,
-  betToken: string,
+  betToken?: string | null,
   limit = 50,
 ): Promise<MarketOpinion[]> {
   return request<MarketOpinion[]>(
-    `/opinions${query({ symbol, token: betToken, limit })}`,
+    `/opinions${query({ symbol, token: betToken ?? undefined, limit })}`,
   );
 }
 

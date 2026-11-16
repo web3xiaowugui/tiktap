@@ -21,6 +21,7 @@ interface OpinionRow {
   side: number | null;
   round_id: number | null;
   created_at: number;
+  bet_token: string;
   x_name: string | null;
   x_handle: string | null;
 }
@@ -32,7 +33,7 @@ export function readOpinions(
 ): MarketOpinion[] {
   const rows = db
     .prepare(
-      "SELECT o.id, o.address, o.body, o.side, o.round_id, o.created_at, " +
+      "SELECT o.id, o.address, o.body, o.side, o.round_id, o.created_at, o.bet_token, " +
         "u.x_name, u.x_handle " +
         "FROM opinions o LEFT JOIN users u ON u.id = o.user_id " +
         "WHERE o.market_id = ? ORDER BY o.created_at DESC LIMIT ?",
@@ -51,6 +52,43 @@ export function readOpinions(
     body: row.body,
     side: row.side === null ? null : row.side === 0 ? "long" : "short",
     roundId: row.round_id,
+    betToken: row.bet_token,
+    time: relativeTime(row.created_at),
+    followed: false,
+  }));
+}
+
+/** 跨下注代币：某个标的的全部观点（左侧动态用）。 */
+export function readOpinionsBySymbol(
+  db: Db,
+  symbol: string,
+  limit = 50,
+): MarketOpinion[] {
+  const rows = db
+    .prepare(
+      "SELECT o.id, o.address, o.body, o.side, o.round_id, o.created_at, o.bet_token, " +
+        "u.x_name, u.x_handle " +
+        "FROM opinions o LEFT JOIN users u ON u.id = o.user_id " +
+        "WHERE o.symbol = ? ORDER BY o.created_at DESC LIMIT ?",
+    )
+    .all(
+      symbol.toUpperCase(),
+      Math.min(Math.max(limit, 1), 200),
+    ) as unknown as OpinionRow[];
+
+  return rows.map((row) => ({
+    id: String(row.id),
+    address: row.address,
+    name: displayName({
+      address: row.address,
+      x_name: row.x_name,
+      x_handle: row.x_handle,
+    }),
+    avatar: gradientFor(row.address),
+    body: row.body,
+    side: row.side === null ? null : row.side === 0 ? "long" : "short",
+    roundId: row.round_id,
+    betToken: row.bet_token,
     time: relativeTime(row.created_at),
     followed: false,
   }));
@@ -111,6 +149,7 @@ export function createOpinion(
     body,
     side: side === null ? null : side === 0 ? "long" : "short",
     roundId: input.roundId ?? null,
+    betToken: marketRow.bet_token,
     time: relativeTime(now),
     followed: false,
   };

@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronRight, Star } from "lucide-react";
-import { getFeed, getLeaderboard, getSidebarMenu, getTokens } from "@/api";
+import { getLeaderboard, getOpinions, getSidebarMenu, getTokens } from "@/api";
 import type { SidebarCategoryItem, SidebarTabId, Token } from "@/api/types";
 import { Avatar } from "@/components/Avatar";
 import { TokenIcon } from "@/components/TokenIcon";
@@ -28,7 +28,19 @@ export function TokenSidebar({ width }: { width: number }) {
   } = useApi(getSidebarMenu, []);
   const { data: tokens, loading } = useApi(getTokens, []);
   const { data: leaderboard } = useApi(getLeaderboard, []);
-  const { data: feed } = useApi(() => getFeed(selected), []);
+  const opinionsState = useApi(() => getOpinions(selected), [selected]);
+  const reloadOpinions = opinionsState.reload;
+
+  // 新观点发布后（或每 5s）刷新左侧动态
+  useEffect(() => {
+    const refresh = () => reloadOpinions();
+    window.addEventListener("tiktap:activity-refresh", refresh);
+    const timer = window.setInterval(refresh, 5_000);
+    return () => {
+      window.removeEventListener("tiktap:activity-refresh", refresh);
+      window.clearInterval(timer);
+    };
+  }, [reloadOpinions]);
 
   const tabs = menu?.tabs ?? [];
   const categories = menu?.categories ?? [];
@@ -185,15 +197,23 @@ export function TokenSidebar({ width }: { width: number }) {
 
         {activeTab === "activity" && (
           <div className="pt-1">
-            {(feed ?? []).map((item) => (
+            {(opinionsState.data ?? []).length === 0 && (
+              <p className="px-3 py-6 text-center text-[12px] text-muted2">
+                还没有观点
+              </p>
+            )}
+
+            {(opinionsState.data ?? []).map((item) => (
               <div
                 key={item.id}
-                className="flex items-center gap-2.5 border-b border-line/50 px-3 py-2.5 last:border-0"
+                className="border-b border-line/50 px-3 py-2.5 last:border-0"
               >
-                <Avatar name={item.name} gradient={item.avatar} size={28} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1">
-                    <span className="truncate text-[14px] font-medium text-white">{item.name}</span>
+                <div className="flex items-center gap-2">
+                  <Avatar name={item.name} gradient={item.avatar} size={24} />
+                  <span className="truncate text-[13px] font-medium text-white">
+                    {item.name}
+                  </span>
+                  {item.side && (
                     <span
                       className={cn(
                         "shrink-0 rounded px-1 py-[1px] text-[10px] font-bold",
@@ -202,12 +222,19 @@ export function TokenSidebar({ width }: { width: number }) {
                           : "bg-up/10 text-up",
                       )}
                     >
-                      {item.action}
+                      {item.side === "long" ? "看涨" : "看跌"}
                     </span>
-                  </div>
-                  <div className="num truncate text-[12px] text-muted2">
-                    {fmtCompactUsd(item.amountUsd)} · {item.time}前
-                  </div>
+                  )}
+                  <span className="num ml-auto shrink-0 text-[10px] text-muted2">
+                    {item.time}
+                    {item.time === "刚刚" ? "" : "前"}
+                  </span>
+                </div>
+                <p className="mt-1 line-clamp-2 break-words pl-[32px] text-[12px] leading-relaxed text-muted">
+                  {item.body}
+                </p>
+                <div className="num mt-0.5 pl-[32px] text-[10px] text-muted2">
+                  {item.betToken} · 第 {item.roundId ?? "—"} 轮
                 </div>
               </div>
             ))}
