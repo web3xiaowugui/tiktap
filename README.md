@@ -1,90 +1,74 @@
-# fomo web · 剪裁版
+# TikTap — Monorepo
 
-一个只做前端的 fomo 网页版复刻：营销首页 + 钱包登录弹窗 + 交易终端（发现 / 个人主页）。
-账户、持仓和下单数据来自本地 mock API；K 线使用 TradingView Lightweight Charts，1 分钟数据来自 OKX 公共行情接口。不会发起真实交易或动用资金；钱包连接只读取公开地址。
+X Layer 二元彩池下注终端。仓库包含三端 + 一个共享包：
+
+```
+apps/web        React 19 + Vite 7 + Tailwind 4 前端（原 fomo 前端整体搬入）
+apps/server     Node 26 后端：node:http + node:sqlite + viem，无需构建步骤
+packages/shared 两端共享：领域类型、轮次数学
+contracts       Foundry 工程（Solidity，暂无依赖库）
+data/           本地 SQLite（gitignored）
+```
 
 ## 快速开始
 
 ```bash
 pnpm install
-pnpm dev
+pnpm dev            # 同时起前端(5173) 和后端(8787)
+pnpm dev:web        # 只起前端
+pnpm dev:server     # 只起后端
+pnpm typecheck      # 三端类型检查
+pnpm build          # 构建前端到 apps/web/dist
 ```
 
-打开 http://127.0.0.1:5173 。
+前端把 `/api/*` 代理到 `http://127.0.0.1:8787`（见 `apps/web/vite.config.ts`）。
 
-也可以直接进入已登录状态：
+### 后端
 
-- http://127.0.0.1:5173/discover?demo=1
-- http://127.0.0.1:5173/u/end837?demo=1
+```bash
+cp .env.example .env    # 填 WALLET_ENC_KEY、OPERATOR_PKEY、RPC_URL
+pnpm dev:server
+curl http://127.0.0.1:8787/api/health
+```
 
-正常流程是在首页点「登录」或「开始交易」，在弹窗里连接 OKX Wallet。
-登录成功后进入内置演示账户，连接的地址会显示在右上角账户菜单里。
-没有安装插件时，可以点「进入演示模式」，或直接访问上面的 `?demo=1` 链接。
-登录状态保存在 localStorage。
+- 运行时：Node 26 直接用类型剥离跑 `.ts`，**没有编译步骤**
+- 数据库：`node:sqlite`，单文件 `data/tiktap.db`，schema 在 `apps/server/schema.sql`（启动时幂等应用）
+- 链交互：`viem`（唯一运行时依赖）
+- 表结构：`users`（地址 + 加密私钥）、`txs`（txHash 唯一键、pending/confirmed/failed）、`pools`、`rounds`
 
-## 钱包登录
+### 合约
 
-目前只接入 OKX Wallet 浏览器插件：
+```bash
+anvil --block-time 1     # 本地链
+pnpm contracts:build
+pnpm contracts:test
+```
 
-- 通过 `window.okxwallet` / `window.ethereum.isOkxWallet` 检测插件，并兼容 EIP-6963 的延迟注入
-- 调用 EIP-1193 的 `eth_requestAccounts` 获取公开地址，再读取 `eth_chainId`
-- 地址、chainId 和会话写入 localStorage（key 为 `fomo.demo.auth.v2`）
-- 连接后进入内置的 `end837` 演示账户，钱包地址只用于展示
-- 没有做签名校验和 SIWE 后端验证，刷新页面后会直接恢复本地会话
+本机还没装 Foundry。合约**不引入任何依赖库**（ERC20 与权限自己写），因此不需要 `forge install`。
 
-相关代码在 `src/lib/okxWallet.ts`、`src/context/AuthContext.tsx` 和
-`src/components/AuthModal.tsx`。
+## 设计要点
 
-## 技术栈
+- **单一入口**：用户地址在库里托管，后端用用户私钥签名发交易；合约用地址白名单（`onlyUser`）挡住外部钱包，`settle` 仅 operator。所有写操作必经后端，所以一定有 txHash，DB 与链不会漂。
+- **数据准确**：每笔写操作 `pending` 落库 → 查 receipt → `confirmed`；`tx_hash` 唯一键保证幂等；重启时补查超时的 pending，不需要链上索引器。
+- **轮次**：合约按区块高度派生 roundId（600 区块一轮，前 300 可下注），前端与后端共用 `packages/shared/src/rounds.ts` 的常量。
+- **共享代码用转发壳**：`apps/web/src/api/types.ts` 与 `src/lib/rounds.ts` 只剩一行 `export * from "@tiktap/shared/…"`，所以全站 import 未改。
 
-- React 19 + TypeScript
-- Vite 7
-- Tailwind CSS 4
-- React Router 7
-- lucide-react 图标
-- K 线使用 TradingView Lightweight Charts（`lightweight-charts`）；个人主页面积图仍为手写 SVG
+## 前端（apps/web）
 
-## 页面
+营销首页 + 交易终端（发现 / 个人主页）。K 线用 TradingView Lightweight Charts，1 分钟行情来自 OKX 公共接口；其余数据来自 `src/api` 门面（目前仍是 mock，切后端时只替换这一层的实现）。
 
 | 路由 | 内容 |
 | --- | --- |
-| `/` | 营销首页、太空场景、App 预览、社交证明、页脚 |
-| `/discover?symbol=BTC` | 交易终端：币种侧栏、K 线、持有者、实时动态、下单面板 |
-| `/u/end837` | 个人主页：资料、排名卡、组合曲线、持仓、最近动态、转账面板 |
+| `/` | 营销首页 |
+| `/discover?symbol=BTC` | 交易终端：币种侧栏、K 线、观点 / 活动 / 参与者、下注面板、我的持仓 |
+| `/u/:handle` | 个人主页 |
 
-## 数据层
+`?demo=1` 可跳过登录直接进演示账户。
 
-所有页面只通过 `src/api` 取数，不直接 import 模拟数据：
+## 环境变量
 
-- `src/api/types.ts` — Token / BetToken / Candle / Position / Profile / SidebarMenu 等类型
-- `src/api/mockData.ts` — 固定数据、侧栏菜单、XLayer 下注代币、确定性的组合曲线生成器
-- `src/api/liveMarket.ts` — OKX 公共 1m K 线接口（无需 API Key），当前最多取 300 根
-- `src/api/index.ts` — 以 Promise 形式暴露的接口，带 160–760ms 模拟延迟；K 线走 `getLiveCandles()`
-- `src/lib/useLiveCandles.ts` — 每 15 秒刷新一次 1m K 线，刷新失败时保留上一份数据
-
-侧栏的一级 Tab、二级分类和右侧面板的 XLayer 下注代币都由接口返回，不在组件里写死。
-账户数据可以继续替换成真实的 `fetch()`；K 线已经通过 `getLiveCandles()` 接入 OKX 公共行情。
-`useApi`（`src/lib/useApi.ts`）负责 loading / error / 切换请求时的状态保持。
-
-## 已实现
-
-- OKX Wallet 浏览器插件连接、退出、路由守卫、localStorage 会话
-- 钱包未安装提示、安装链接、重新检测、连接取消 / 待处理错误提示
-- 交易对切换、K 线（TradingView Lightweight Charts，仅 1m，OKX 公共行情，15 秒刷新）、自选、搜索（⌘/Ctrl + K）
-- 侧栏一级 Tab / 二级分类通过 `getSidebarMenu()` 接口下发
-- 下单面板的方向 / 金额 / 仓位比例交互（仅 toast，不提交）
-- 右侧面板 XLayer 下注代币选择（OKB / BEM，通过 `getBetTokens()` 接口加载，可用余额随选中代币联动）
-- 5 个可编辑快捷金额（按代币分别读写 `getBetQuickAmounts()` / `saveBetQuickAmounts()`）
-- 个人主页图表区间切换、持仓筛选、关注按钮、转账表单
-- 桌面端与移动端的基础响应式布局
-
-## 未实现（有意裁剪）
-
-- 真实签名校验、SIWE、后端会话、KYC、私钥管理、充值提现
-- 真实交易撮合、WebSocket 行情、后端与数据库
-- 排行榜完整页、设置页、帮助中心、移动端原生 App
+见 `.env.example`。生产环境必须自己生成 `WALLET_ENC_KEY`（`openssl rand -hex 32`），它用于 AES-256-GCM 加密用户私钥。
 
 ## 说明
 
-本项目是前端学习 / 演示项目，与 FOMO Labs 无关联，不提供任何真实交易服务。
-界面中出现的名称、数值和头像均为模拟数据。
+演示项目，与 FOMO Labs 无关联，不提供真实交易服务。界面中的名称、数值和头像均为模拟数据。

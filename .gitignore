@@ -1,6 +1,11 @@
 node_modules/
 .pnpm-store/
 
+# local tooling scratch (pnpm store lock / TEMP redirects)
+.home/
+.cache/
+.vite/
+
 # build output
 dist/
 apps/*/dist/
