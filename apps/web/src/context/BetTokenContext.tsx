@@ -47,8 +47,12 @@ export function BetTokenProvider({ children }: { children: ReactNode }) {
     });
   }, [data, walletState.data]);
 
+  // TEST 是免费领的体验币，默认落在它上面，新号不用先找代币。
   const defaultToken =
-    tokens.find((token) => token.symbol === "OKB") ?? tokens[0] ?? null;
+    tokens.find((token) => token.symbol === "TEST") ??
+    tokens.find((token) => token.symbol === "OKB") ??
+    tokens[0] ??
+    null;
   const selected =
     tokens.find((token) => token.symbol === selectedSymbol) ?? defaultToken;
 

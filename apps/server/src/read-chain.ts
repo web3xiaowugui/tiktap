@@ -295,6 +295,15 @@ export async function readHoldings(
   const rows: ChainHolding[] = [];
   for (const row of listMarkets(db)) {
     for (const { roundIndex, roundOffset } of live) {
+      // 已结算的轮不再算「持仓」：要领取的去「我的下注」里领。
+      const [, , , settled] = (await publicClient.readContract({
+        address: market,
+        abi: POOL_MARKET_ABI,
+        functionName: "pools",
+        args: [BigInt(roundIndex), row.market_id],
+      })) as readonly [bigint, bigint, number, boolean];
+      if (settled) continue;
+
       const [up, down] = (await publicClient.readContract({
         address: market,
         abi: POOL_MARKET_ABI,
