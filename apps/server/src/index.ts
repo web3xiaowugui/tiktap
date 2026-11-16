@@ -1,14 +1,20 @@
 import { registerRoutes } from "./api.ts";
 import { countUsers, openDb } from "./db.ts";
 import { seedMarkets } from "./markets.ts";
+import { backfillBetsFromTxs } from "./bets.ts";
 import { syncMarkets } from "./market-sync.ts";
 import { Router, startServer } from "./http.ts";
 import { publicClient, RPC_URL, tryGetBlockNumber } from "./chain.ts";
 import { readConfig } from "./tx.ts";
-import { startAutoSettler } from "./settlement.ts";
+import { backfillBetResults, startAutoSettler } from "./settlement.ts";
 
 const db = openDb();
 seedMarkets(db);
+
+const backfilledBets = backfillBetsFromTxs(db);
+if (backfilledBets > 0) {
+  console.log(`[bets] 从 txs 回填了 ${backfilledBets} 条下注记录`);
+}
 
 const cfg = readConfig();
 if (cfg.market) {
@@ -22,6 +28,15 @@ if (cfg.market) {
     }
   } catch (error) {
     console.warn("[markets] 同步失败（链上写操作暂时不可用）：", String(error).slice(0, 200));
+  }
+
+  try {
+    const filled = await backfillBetResults(db, cfg);
+    if (filled > 0) {
+      console.log(`[bets] 补齐了 ${filled} 组已结算轮次的下注结果`);
+    }
+  } catch (error) {
+    console.warn("[bets] 回填结算结果失败：", String(error).slice(0, 200));
   }
 } else {
   console.log("[markets] 未配置 POOL_MARKET_ADDRESS，链上写操作不可用");

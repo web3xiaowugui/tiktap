@@ -60,6 +60,7 @@ curl http://127.0.0.1:8787/api/health
 | GET | `/api/auth/x/start` | 返回 X 授权地址（state + PKCE，服务端生成） |
 | GET | `/api/auth/x/callback` | X 授权回调：换 token、取 users/me，302 回前端带一次性票据 |
 | POST | `/api/auth/x/session` | 票据换账号资料，随后前端建/复用托管账户 |
+| GET | `/api/bets?address=&limit=` | 某个地址的下注记录（结构化，含结算结果/派奖/领取状态） |
 | POST | `/api/auth/demo` `/api/auth/signout` | 演示登录 / 登出 |
 
 模拟数据在后端 `apps/server/src/data/mockData.ts`（原前端文件整体搬入），要改数值只改这一处。

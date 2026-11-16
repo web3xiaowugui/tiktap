@@ -13,6 +13,7 @@ import {
 } from "./tx.ts";
 import { findMarket } from "./markets.ts";
 import { decryptPrivateKey } from "./wallet.ts";
+import { recordBet } from "./bets.ts";
 import type { Db } from "./db.ts";
 
 export interface BetInput {
@@ -176,6 +177,19 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
     }
 
     markTxConfirmed(db, txId);
+
+    recordBet(db, {
+      userId: user.id,
+      address: user.address,
+      marketId,
+      symbol: marketRow.symbol,
+      betToken: marketRow.bet_token,
+      roundId: roundIndex,
+      side,
+      amountWei: amountWei.toString(),
+      txHash: hash,
+      status: "confirmed",
+    });
 
     return {
       txHash: hash,

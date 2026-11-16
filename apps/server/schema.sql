@@ -56,6 +56,33 @@ CREATE TABLE IF NOT EXISTS markets (
   sort_order    INTEGER NOT NULL DEFAULT 0,
   UNIQUE (symbol, bet_token)
 );
+-- 用户下注记录：下单写入，结算回填结果/价格/应得派奖，领奖回填领取时间
+CREATE TABLE IF NOT EXISTS bets (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id       INTEGER REFERENCES users(id),
+  address       TEXT NOT NULL,        -- 冗余存一份，按地址查更快
+  market_id     INTEGER NOT NULL,
+  symbol        TEXT NOT NULL,
+  bet_token     TEXT NOT NULL,
+  round_id      INTEGER NOT NULL,     -- 合约 roundIndex
+  side          INTEGER NOT NULL,     -- 0 = 涨, 1 = 跌
+  amount_wei    TEXT NOT NULL,
+  tx_hash       TEXT UNIQUE NOT NULL,
+  status        TEXT NOT NULL,        -- confirmed | failed
+  winner_side   INTEGER,              -- 结算结果，0/1
+  lock_price    TEXT,                 -- 锁定价格（轮首价）
+  settle_price  TEXT,                 -- 开奖价格（轮末价）
+  payout_wei    TEXT,                 -- 应得派奖（按赢方比例算），输了是 0
+  claimed_at    INTEGER,
+  claim_tx_hash TEXT,
+  created_at    INTEGER NOT NULL,
+  settled_at    INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_bets_user ON bets(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_bets_address ON bets(address, created_at);
+CREATE INDEX IF NOT EXISTS idx_bets_round ON bets(market_id, round_id);
+
 -- 每轮的锁定价格 / 开奖价格（来源 OKX 1m K 线，按链上块时间对齐）
 CREATE TABLE IF NOT EXISTS round_prices (
   symbol       TEXT NOT NULL,        -- 标的，如 BTC

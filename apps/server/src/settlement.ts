@@ -16,7 +16,8 @@ import {
 } from "./tx.ts";
 import { decryptPrivateKey } from "./wallet.ts";
 import { describe } from "./users.ts";
-import { ensureRoundPrices } from "./round-prices.ts";
+import { ensureRoundPrices, getRoundPrice } from "./round-prices.ts";
+import { applyClaim, applySettlement } from "./bets.ts";
 import type { Db } from "./db.ts";
 
 export interface RoundInfo {
@@ -124,6 +125,7 @@ export async function settleMarket(
   marketId: number,
   roundIndex: number,
   winner: number,
+  prices?: { lockPrice?: number | null; settlePrice?: number | null },
 ): Promise<SettleResult> {
   const market = requireMarket(cfg);
   const row = listMarkets(db).find((item) => item.market_id === marketId);
@@ -177,6 +179,14 @@ export async function settleMarket(
   }
   markTxConfirmed(db, txId);
 
+  applySettlement(db, marketId, roundIndex, {
+    winnerSide: winner,
+    lockPrice: prices?.lockPrice ?? null,
+    settlePrice: prices?.settlePrice ?? null,
+    upWei: upAmount.toString(),
+    downWei: downAmount.toString(),
+  });
+
   return {
     marketId,
     symbol: row.symbol,
@@ -207,12 +217,14 @@ export async function settleRound(
 
   for (const symbol of symbols) {
     let winner: number;
+    let roundPrices: { lockPrice?: number | null; settlePrice?: number | null } | undefined;
     if (explicitWinners?.[symbol]) {
       winner = winnerFromLabel(explicitWinners[symbol]);
     } else {
       try {
         const price = await priceWinner(db, cfg, symbol, roundIndex);
         winner = price.winner;
+        roundPrices = { lockPrice: price.lockPrice, settlePrice: price.settlePrice };
         prices[symbol] = price;
       } catch (error) {
         // 只给了部分标的的显式结果时，其余标的拿不到价格就跳过，绝不瞎猜。
@@ -222,7 +234,7 @@ export async function settleRound(
     }
 
     for (const row of listMarkets(db).filter((item) => item.symbol === symbol)) {
-      const result = await settleMarket(db, cfg, row.market_id, roundIndex, winner);
+      const result = await settleMarket(db, cfg, row.market_id, roundIndex, winner, roundPrices);
       pools.push(result);
     }
   }
@@ -307,6 +319,8 @@ export async function claimForUser(
     }
     markTxConfirmed(db, txId);
 
+    applyClaim(db, marketId, roundIndex, user.address, hash);
+
     return { txHash: hash, marketId, roundIndex, amountWei: amountWei.toString() };
   });
 }
@@ -379,4 +393,38 @@ export async function marketsWithUnsettledBets(
     if (!settled && upAmount + downAmount > 0n) result.push(row.market_id);
   }
   return result;
+}
+/**
+ * 启动时补齐历史下注结果：这一轮链上已经结算、但 bets 里还没有结果的，
+ * 从合约读两边总额和 winner，用 round_prices 里的价格回填（幂等）。
+ */
+export async function backfillBetResults(db: Db, cfg: ChainConfig): Promise<number> {
+  const market = requireMarket(cfg);
+  const groups = db
+    .prepare(
+      "SELECT DISTINCT market_id, round_id, symbol FROM bets WHERE winner_side IS NULL",
+    )
+    .all() as Array<{ market_id: number; round_id: number; symbol: string }>;
+
+  let filled = 0;
+  for (const group of groups) {
+    const [upAmount, downAmount, winner, settled] = (await publicClient.readContract({
+      address: market,
+      abi: POOL_MARKET_ABI,
+      functionName: "pools",
+      args: [BigInt(group.round_id), group.market_id],
+    })) as readonly [bigint, bigint, number, boolean];
+    if (!settled) continue;
+
+    const price = getRoundPrice(db, group.symbol, group.round_id);
+    applySettlement(db, group.market_id, group.round_id, {
+      winnerSide: Number(winner),
+      lockPrice: price?.lockPrice ?? null,
+      settlePrice: price?.settlePrice ?? null,
+      upWei: upAmount.toString(),
+      downWei: downAmount.toString(),
+    });
+    filled += 1;
+  }
+  return filled;
 }
