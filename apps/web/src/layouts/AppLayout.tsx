@@ -5,7 +5,6 @@ import { TickerBar } from "@/components/TickerBar";
 import { TokenSidebar } from "@/components/TokenSidebar";
 import { TopBar } from "@/components/TopBar";
 import { TradePanel } from "@/components/TradePanel";
-import { TransferPanel } from "@/components/TransferPanel";
 import { useAuth } from "@/context/AuthContext";
 import { BetTokenProvider } from "@/context/BetTokenContext";
 import { ChainClockProvider } from "@/lib/chainClock";
@@ -63,7 +62,8 @@ export default function AppLayout() {
           <main className="flex min-h-0 min-w-0 flex-1 flex-col">
             <Outlet />
           </main>
-          {isProfile ? <TransferPanel /> : <TradePanel />}
+          {/* 个人主页不需要右侧交易/转账栏，内容区占满 */}
+          {!isProfile && <TradePanel />}
         </div>
         <TickerBar />
       </div>
