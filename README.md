@@ -57,13 +57,24 @@ curl http://127.0.0.1:8787/api/health
 | GET | `/api/holdings?address` | 我的持仓（配了合约只返回当前轮 + 上一轮还没开奖的仓位） |
 | GET | `/api/profiles/:handle` `+ /positions` `+ /activity` | 个人主页三块 |
 | GET | `/api/profiles/:handle/equity?range=24h\|7d\|30d` | 组合曲线 |
-| POST | `/api/auth/x` `/api/auth/demo` `/api/auth/signout` | 登录（X 账号 / 演示）/ 登出 |
+| GET | `/api/auth/x/start` | 返回 X 授权地址（state + PKCE，服务端生成） |
+| GET | `/api/auth/x/callback` | X 授权回调：换 token、取 users/me，302 回前端带一次性票据 |
+| POST | `/api/auth/x/session` | 票据换账号资料，随后前端建/复用托管账户 |
+| POST | `/api/auth/demo` `/api/auth/signout` | 演示登录 / 登出 |
 
 模拟数据在后端 `apps/server/src/data/mockData.ts`（原前端文件整体搬入），要改数值只改这一处。
 
 **K 线是例外**：1m 实时行情由浏览器直连 OKX 公共接口（`apps/web/src/api/liveMarket.ts`）。免费额度按用户 IP 分摊，服务端既不吃额度也不需要存 K 线；`/api/candles` 只提供确定性生成的演示数据。
 
 登录态仍存在浏览器 localStorage（前端会话，不含敏感信息）。
+
+**X 账号登录**走真实 OAuth 2.0 授权码 + PKCE（[x-oauth.ts](apps/server/src/x-oauth.ts)）：
+
+1. 在 https://developer.x.com 建 OAuth 2.0 应用，Client type 选 Web App / Native App，回调地址填 `http://127.0.0.1:8787/api/auth/x/callback`；
+2. `.env` 填 `X_CLIENT_ID`、`X_CLIENT_SECRET`（公开客户端可不填 Secret）、`PUBLIC_BASE_URL`、`WEB_BASE_URL`；
+3. 前端点「使用 X 账号登录」→ `GET /api/auth/x/start` → 跳 X 授权 → 回调换 token 取 `users/me` → 302 回 `WEB_BASE_URL/?x_ticket=…` → `POST /api/auth/x/session` 换资料 → 走托管建号。
+
+没配置 `X_CLIENT_ID` 时该接口返回 503 并说明缺什么；授权失败会带 `?x_error=` 回来提示。
 
 #### 链上写操作（已接通，anvil 上端到端验证过）
 

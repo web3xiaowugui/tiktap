@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowUpRight, ChevronRight, Globe2 } from "lucide-react";
 import { getTokens } from "@/api";
@@ -16,11 +16,42 @@ const PREVIEW_TOKENS = ["BTC", "ETH", "SOL", "HYPE"];
 
 export default function Landing() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, finishXLogin } = useAuth();
   const { push } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [authOpen, setAuthOpen] = useState(searchParams.get("login") === "1");
   const { data: tokens } = useApi(getTokens, []);
+
+  /**
+   * X 授权回跳：地址栏带 ?x_ticket=... 时换资料 → 建/复用托管账户 → 进发现页。
+   * 授权失败则带 ?x_error=...，提示一下就好。
+   */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ticket = params.get("x_ticket");
+    const reason = params.get("x_error");
+
+    if (reason) {
+      push(`X 授权没有完成：${reason}`, "error");
+      return;
+    }
+    if (!ticket) return;
+
+    let alive = true;
+    void finishXLogin(ticket)
+      .then(() => {
+        if (alive) navigate("/discover", { replace: true });
+      })
+      .catch((caught: unknown) => {
+        if (alive) {
+          push(caught instanceof Error ? caught.message : "X 登录失败，请重试", "error");
+        }
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [finishXLogin, navigate, push]);
 
   const openAuth = () => setAuthOpen(true);
 
@@ -66,7 +97,7 @@ function LandingNav({
   onStart: () => void;
   onToast: (message: string) => void;
 }) {
-  const { user } = useAuth();
+  const { user, finishXLogin } = useAuth();
 
   return (
     <header className="absolute inset-x-0 top-0 z-40">

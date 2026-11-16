@@ -7,7 +7,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { createUser, getUser, signInAsDemo, signInWithX, signOut as signOutRequest } from "@/api";
+import {
+  createUser,
+  getUser,
+  signInAsDemo,
+  signInWithXTicket,
+  signOut as signOutRequest,
+  startXOAuth,
+} from "@/api";
 import type { AuthUser } from "@/api/types";
 
 
@@ -17,7 +24,8 @@ const ADDRESS_KEY = "tiktap.custody.address.v1";
 
 interface AuthContextValue {
   user: AuthUser | null;
-  connectX: (handle: string) => Promise<AuthUser>;
+  startXLogin: (returnTo?: string) => Promise<void>;
+  finishXLogin: (ticket: string) => Promise<AuthUser>;
   signInDemo: () => Promise<AuthUser>;
   signOut: () => Promise<void>;
 }
@@ -137,9 +145,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [remember],
   );
 
-  const connectX = useCallback(
-    async (handle: string) => {
-      const nextUser = await signInWithX(handle);
+  /** 跳到 X 授权页；回来时 Landing 会带着 x_ticket 调 finishXLogin。 */
+  const startXLogin = useCallback(async (returnTo?: string) => {
+    const url = await startXOAuth(returnTo ?? "/discover");
+    window.location.assign(url);
+  }, []);
+
+  const finishXLogin = useCallback(
+    async (ticket: string) => {
+      const nextUser = await signInWithXTicket(ticket);
       return withCustody(nextUser);
     },
     [withCustody],
@@ -161,8 +175,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, connectX, signInDemo, signOut }),
-    [user, connectX, signInDemo, signOut],
+    () => ({ user, startXLogin, finishXLogin, signInDemo, signOut }),
+    [user, startXLogin, finishXLogin, signInDemo, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

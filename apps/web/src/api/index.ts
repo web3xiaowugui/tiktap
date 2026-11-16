@@ -240,10 +240,19 @@ export async function faucet(input: {
   return request("/faucet", { method: "POST", body: JSON.stringify(input) });
 }
 
-export async function signInWithX(handle: string): Promise<AuthUser> {
-  return request<AuthUser>("/auth/x", {
+/** 拿 X 授权页地址（state + PKCE 在服务端生成）。 */
+export async function startXOAuth(returnTo = "/discover"): Promise<string> {
+  const result = await request<{ url: string }>(
+    `/auth/x/start?returnTo=${encodeURIComponent(returnTo)}`,
+  );
+  return result.url;
+}
+
+/** 用授权回跳带回来的一次性票据换账号资料。 */
+export async function signInWithXTicket(ticket: string): Promise<AuthUser> {
+  return request<AuthUser>("/auth/x/session", {
     method: "POST",
-    body: JSON.stringify({ handle }),
+    body: JSON.stringify({ ticket }),
   });
 }
 

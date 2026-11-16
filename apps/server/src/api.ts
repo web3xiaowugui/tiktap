@@ -1,4 +1,12 @@
 import { readJson, HttpError, type Router } from "./http.ts";
+import {
+  buildAuthorizeUrl,
+  consumeXTicket,
+  exchangeXCode,
+  isXOAuthConfigured,
+  readXConfig,
+  safeReturnTo,
+} from "./x-oauth.ts";
 import type { Db } from "./db.ts";
 import { findMarket, listMarkets } from "./markets.ts";
 import { placeBet, mintForUser } from "./betting.ts";
@@ -323,15 +331,47 @@ export function registerRoutes(router: Router, db: Db): void {
     provider: "demo",
   }));
 
-  router.post("/api/auth/x", async ({ req }) => {
-    const body = await readJson<{ handle?: string }>(req);
-    const raw = (body.handle ?? "").trim().replace(/^@+/, "").toLowerCase();
-    const handle = /^[a-z0-9_]{2,20}$/.test(raw) ? raw : DEMO_PROFILE.handle;
+  /** 真·X OAuth：返回授权地址，前端 window.location 跳过去。 */
+  router.get("/api/auth/x/start", async ({ query }) => {
+    const returnTo = safeReturnTo(query.get("returnTo"));
+    return { url: buildAuthorizeUrl(returnTo), configured: isXOAuthConfigured() };
+  });
 
+  /** X 授权回调：code 换 token → users/me → 302 回前端，带一次性票据。 */
+  router.get("/api/auth/x/callback", async ({ query, res }) => {
+    const cfg = readXConfig();
+    const denied = query.get("error");
+    if (denied) {
+      const reason = query.get("error_description") ?? denied;
+      res.writeHead(302, {
+        Location: `${cfg.webUrl}/?x_error=${encodeURIComponent(reason)}`,
+      });
+      res.end();
+      return;
+    }
+
+    const code = query.get("code");
+    const state = query.get("state");
+    if (!code || !state) throw new HttpError(400, "X 回调缺少 code 或 state");
+
+    const result = await exchangeXCode(code, state);
+    res.writeHead(302, {
+      Location: `${result.webUrl}/?x_ticket=${result.ticket}&x_next=${encodeURIComponent(result.returnTo)}`,
+    });
+    res.end();
+    return;
+  });
+
+  /** 票据换资料，前端随后走「复用地址 / POST /api/users 建号」。 */
+  router.post("/api/auth/x/session", async ({ req }) => {
+    const body = await readJson<{ ticket?: string }>(req);
+    const ticket = (body.ticket ?? "").trim();
+    if (!ticket) throw new HttpError(400, "缺少登录票据");
+    const profile = consumeXTicket(ticket);
     return {
-      name: handle,
-      handle,
-      email: `${handle}@x.demo`,
+      name: profile.name,
+      handle: profile.handle,
+      email: `${profile.handle}@x`,
       provider: "x",
     };
   });

@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { ArrowUpRight, Loader2, X } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/context/AuthContext";
-import { cn } from "@/lib/cn";
 
 /** X（原 Twitter）标志，官方 path。 */
 function XMark({ className }: { className?: string }) {
@@ -24,10 +23,9 @@ export function AuthModal({
   redirectTo?: string;
 }) {
   const navigate = useNavigate();
-  const { connectX, signInDemo } = useAuth();
+  const { startXLogin, signInDemo } = useAuth();
   const [pending, setPending] = useState<"x" | "demo" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [handle, setHandle] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -55,12 +53,14 @@ export function AuthModal({
     setPending("x");
 
     try {
-      await connectX(handle.trim());
-      onClose();
-      navigate(redirectTo);
-    } catch {
-      setError("X 账号登录失败，请重试。");
-    } finally {
+      await startXLogin(redirectTo);
+      // 成功时浏览器已经离开当前页面，这里不用再做别的
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "无法发起 X 授权，请检查服务端 X 应用配置。",
+      );
       setPending(null);
     }
   };
@@ -119,40 +119,20 @@ export function AuthModal({
             使用 X 账号登录
           </h1>
           <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
-            登录后自动为你创建一个托管账户，下注由后端代为签名，不需要安装钱包。
+            点击按钮会跳到 X 完成授权，回来后自动为你创建托管账户，下注由后端代为签名。
           </p>
 
-          <div className="mt-5">
-            <div className="flex h-10 items-center gap-1.5 rounded-lg border border-line2 bg-[#0a0a0c] px-3 text-[12px] transition focus-within:border-brand/60">
-              <span className="shrink-0 text-muted2">@</span>
-              <input
-                value={handle}
-                onChange={(event) => setHandle(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") void handleX();
-                }}
-                placeholder="你的 X 用户名（可选）"
-                autoComplete="off"
-                spellCheck={false}
-                maxLength={20}
-                disabled={Boolean(pending)}
-                className="min-w-0 flex-1 bg-transparent text-white outline-none placeholder:text-muted2 disabled:opacity-60"
-              />
-            </div>
-
+          <div className="mt-6">
             <button
               type="button"
               onClick={handleX}
               disabled={Boolean(pending)}
-              className={cn(
-                "mt-2 flex h-[46px] w-full items-center justify-center gap-2 rounded-lg bg-white text-[12.5px] font-semibold text-black transition hover:bg-white/90",
-                "disabled:cursor-not-allowed disabled:opacity-65",
-              )}
+              className="flex h-[46px] w-full items-center justify-center gap-2 rounded-lg bg-white text-[12.5px] font-semibold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-65"
             >
               {pending === "x" ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  正在登录…
+                  正在跳转到 X…
                 </>
               ) : (
                 <>
@@ -161,6 +141,10 @@ export function AuthModal({
                 </>
               )}
             </button>
+
+            <p className="mt-2.5 text-center text-[9.5px] leading-relaxed text-muted2">
+              授权范围仅 users.read，不会发推、不会读取你的私信。
+            </p>
           </div>
 
           {error && (
@@ -195,7 +179,7 @@ export function AuthModal({
           </button>
 
           <p className="mt-5 text-[9.5px] leading-relaxed text-muted2">
-            演示环境：X 登录不接入真实 OAuth，只用来生成账号标识；托管账户由后端创建并保管私钥，登录状态仅保存在本地。
+            演示环境：X 授权由后端完成换 token，拿到的账号资料只用来做身份标识；托管账户私钥由后端创建并保管，登录状态仅保存在本地。
           </p>
         </div>
       </div>
