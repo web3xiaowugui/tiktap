@@ -9,6 +9,7 @@ import {
   type CandlestickData,
   type HistogramData,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
   type Time,
   type UTCTimestamp,
@@ -19,6 +20,8 @@ import { fmtCandleTime, fmtPct, fmtPrice, fmtTooltipTime } from "@/lib/format";
 interface CandleChartProps {
   candles: Candle[];
   symbol: string;
+  /** 当前选中轮次的锁定价格，画一条水平线。null/undefined 就不画。 */
+  lockPrice?: number | null;
   className?: string;
 }
 
@@ -40,11 +43,17 @@ const AXIS = "#6a6a77";
 
 const toChartTime = (time: number) => Math.floor(time / 1000) as UTCTimestamp;
 
-export function CandleChart({ candles, symbol, className }: CandleChartProps) {
+export function CandleChart({
+  candles,
+  symbol,
+  lockPrice,
+  className,
+}: CandleChartProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const lockLineRef = useRef<IPriceLine | null>(null);
   const fittedRef = useRef(false);
   const [hover, setHover] = useState<HoverState | null>(null);
 
@@ -167,6 +176,7 @@ export function CandleChart({ candles, symbol, className }: CandleChartProps) {
       chartRef.current = null;
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
+      lockLineRef.current = null;
       fittedRef.current = false;
     };
   }, []);
@@ -213,6 +223,28 @@ export function CandleChart({ candles, symbol, className }: CandleChartProps) {
       }
     }
   }, [candles]);
+
+  /** 选中轮次的锁定价格：在 K 线上画一条水平线，价格变了就重建。 */
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    if (!series) return;
+
+    if (lockLineRef.current) {
+      series.removePriceLine(lockLineRef.current);
+      lockLineRef.current = null;
+    }
+
+    if (lockPrice == null || !Number.isFinite(lockPrice)) return;
+
+    lockLineRef.current = series.createPriceLine({
+      price: lockPrice,
+      color: "#6f5cf5",
+      lineWidth: 1,
+      lineStyle: LineStyle.Dashed,
+      axisLabelVisible: true,
+      title: "锁定价格",
+    });
+  }, [lockPrice, candles]);
 
   return (
     <div ref={wrapRef} className={`relative h-full min-h-0 w-full ${className ?? ""}`}>

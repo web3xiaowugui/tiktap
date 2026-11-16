@@ -151,6 +151,22 @@ export async function getProfile(handle: string): Promise<Profile> {
   return request<Profile>(`/profiles/${encodeURIComponent(handle)}`);
 }
 
+/** 某轮的锁定价格 / 开奖价格（后端已落库，读不到就是 null）。 */
+export async function getRoundPrice(symbol: string, roundStartBlock: number): Promise<{
+  symbol: string;
+  roundIndex: number;
+  roundStartBlock: number;
+  lockPrice: number | null;
+  lockTime: number | null;
+  settlePrice: number | null;
+  settleTime: number | null;
+  updatedAt: number | null;
+}> {
+  return request(
+    `/round-price?symbol=${encodeURIComponent(symbol)}&round=${roundStartBlock}`,
+  );
+}
+
 export async function getPositions(handle: string): Promise<Position[]> {
   return request<Position[]>(`/profiles/${encodeURIComponent(handle)}/positions`);
 }

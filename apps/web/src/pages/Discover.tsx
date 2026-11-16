@@ -12,6 +12,7 @@ import {
   getFeed,
   getHolders,
   getMarketActivity,
+  getRoundPrice,
   getToken,
 } from "@/api";
 import type { FeedItem, Holder, MarketActivity, Token } from "@/api/types";
@@ -66,6 +67,12 @@ export default function Discover() {
   const selected =
     rounds.find((round) => round.startBlock === selectedStartBlock) ?? active;
   const { selected: betToken } = useBetToken();
+  // 当前选中轮次的锁定价格（后端已落库），每分钟重取一次以等到新轮写入
+  const roundPriceState = useApi(
+    () => getRoundPrice(symbol, selected.startBlock),
+    [symbol, selected.startBlock, Math.floor(block / 60)],
+  );
+
   const selectedPoolState = useApi(
     () =>
       betToken
@@ -190,7 +197,11 @@ export default function Discover() {
                 </button>
               </div>
             ) : (
-              <CandleChart candles={candlesState.data ?? []} symbol={symbol} />
+              <CandleChart
+                candles={candlesState.data ?? []}
+                symbol={symbol}
+                lockPrice={roundPriceState.data?.lockPrice ?? null}
+              />
             )}
           </div>
         </div>
