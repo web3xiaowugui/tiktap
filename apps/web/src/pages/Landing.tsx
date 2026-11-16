@@ -4,7 +4,6 @@ import { ArrowUpRight, ChevronRight, Globe2 } from "lucide-react";
 import { getTokens } from "@/api";
 import type { Token } from "@/api/types";
 import { AuthModal } from "@/components/AuthModal";
-import { AppleMark, PlayMark } from "@/components/BrandMarks";
 import { Logo } from "@/components/Logo";
 import { TokenIcon } from "@/components/TokenIcon";
 import { useAuth } from "@/context/AuthContext";
@@ -118,32 +117,6 @@ function LandingNav({
         </div>
       </div>
     </header>
-  );
-}
-
-function StoreBadge({
-  mark,
-  top,
-  bottom,
-  onClick,
-}: {
-  mark: ReactNode;
-  top: string;
-  bottom: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex h-8 items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.03] px-2.5 text-left backdrop-blur transition hover:border-white/30 hover:bg-white/[0.07]"
-    >
-      {mark}
-      <span className="leading-none">
-        <span className="block text-[7px] uppercase tracking-wide text-white/45">{top}</span>
-        <span className="mt-0.5 block text-[9.5px] font-medium text-white/85">{bottom}</span>
-      </span>
-    </button>
   );
 }
 
