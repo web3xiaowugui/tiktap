@@ -44,10 +44,11 @@ curl http://127.0.0.1:8787/api/health
 | --- | --- | --- |
 | GET | `/api/health` | 服务状态、用户数、当前区块 |
 | GET | `/api/tokens` / `/api/tokens/:symbol` | 交易对列表 / 单个 |
-| GET | `/api/bet-tokens` | 下注代币（OKB / BEM） |
+| GET | `/api/bet-tokens` | 下注代币（BEM / OKB / TEST） |
 | GET | `/api/sidebar-menu` | 侧栏一级 Tab 与二级分类 |
 | GET | `/api/leaderboard` | 排行榜 |
-| GET | `/api/pools?market&token&round` | 涨/跌池、人数、获胜方 |
+| GET | `/api/markets` | 市场表（标的×下注代币 → marketId） |
+| GET | `/api/pools?market&token&round` | 涨/跌池、人数、获胜方、marketId |
 | GET | `/api/my-bet?market&token&round` | 我在本轮的仓位（可为 `null`） |
 | GET/PUT | `/api/quick-amounts/:symbol` | 5 个快捷金额（存 SQLite） |
 | GET | `/api/candles?symbol&timeframe` | 预算好的 K 线（确定性生成；1m 实时行情由前端直连 OKX，见下） |
@@ -61,9 +62,25 @@ curl http://127.0.0.1:8787/api/health
 
 **K 线是例外**：1m 实时行情由浏览器直连 OKX 公共接口（`apps/web/src/api/liveMarket.ts`）。免费额度按用户 IP 分摊，服务端既不吃额度也不需要存 K 线；`/api/candles` 只提供确定性生成的演示数据。
 
-登录态仍存在浏览器 localStorage（前端会话，不含敏感信息）；链上写操作（下注 / 领取）这一版还没有接口，等合约和托管钱包接通后再加。
+登录态仍存在浏览器 localStorage（前端会话，不含敏感信息）。
 
-### 合约
+#### 链上写操作（已接通，anvil 上端到端验证过）
+
+| 方法 | 路径 | 作用 |
+| --- | --- | --- |
+| POST | `/api/users` | 建号：生成托管地址 → 加密私钥入库 → 合约 `setAllowed` →（可选）打一点原生币当 gas |
+| GET | `/api/users/:address` | 查已建号用户 |
+| POST | `/api/faucet` | 用用户地址 `mint` 体验币（gas 由用户地址出） |
+| POST | `/api/bet` | 校验 → 首次补一次无限 `approve` → `bet(marketId, side, amount)` → txHash 落 `txs` → 查 receipt 回填 |
+| POST | `/api/markets/sync` | 按 `markets` 表把 `marketId → 代币地址` 同步到链上（幂等，配置不一致才发交易） |
+
+```bash
+POST /api/bet
+{"address":"0x…","market":"BTC","betToken":"TEST","side":"long","amount":"10"}
+```
+
+`side` 取 `long` / `short`；`amount` 是按代币单位（18 位小数）的字符串，后端用 `parseUnits` 转 wei。
+同一个地址的写操作串行排队（`withAddressLock`），并发请求不会撞 nonce。
 
 ### 合约
 
@@ -73,7 +90,7 @@ curl http://127.0.0.1:8787/api/health
 | `contracts/src/PoolMarket.sol` | 二元彩池：市场 = 标的×下注代币（每市场绑一个 ERC20），池子 = (市场, 轮次)；白名单、600 块一轮、前 300 块可下注、operator 结算、按份额派奖、单边退款 |
 
 ```bash
-pnpm contracts:test      # 35 个用例，内存 EVM，约 10ms
+pnpm contracts:test      # 41 个用例，内存 EVM，约 12ms
 pnpm contracts:node      # anvil：1 秒一块、chain id 195、RPC 8545
 PRIVATE_KEY=0x... pnpm contracts:deploy   # 部署到本地 anvil
 ```
@@ -101,7 +118,9 @@ Foundry v1.9.0 已安装（`forge` / `cast` / `anvil` / `chisel` 在 `%USERPROFI
 
 ## 环境变量
 
-见 `.env.example`。生产环境必须自己生成 `WALLET_ENC_KEY`（`openssl rand -hex 32`），它用于 AES-256-GCM 加密用户私钥。
+见 `.env.example`。必须自己生成 `WALLET_ENC_KEY`（`openssl rand -hex 32`），它用于 AES-256-GCM 加密用户私钥。
+
+链上写操作还需要：`POOL_MARKET_ADDRESS` 与三个代币地址（`TEST_TOKEN_ADDRESS` / `OKB_TOKEN_ADDRESS` / `BEM_TOKEN_ADDRESS`，`pnpm contracts:deploy` 会打印）、`OPERATOR_PKEY`（只用于 `setAllowed` / `setMarket` / `settle`，不碰用户的钱）。本地演示可设 `GAS_TOPUP_WEI` 给新地址打 gas，主网应留空。
 
 ## 说明
 

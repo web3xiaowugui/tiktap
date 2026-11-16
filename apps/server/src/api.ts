@@ -1,6 +1,9 @@
 import { readJson, HttpError, type Router } from "./http.ts";
 import type { Db } from "./db.ts";
 import { findMarket, listMarkets } from "./markets.ts";
+import { placeBet, mintForUser } from "./betting.ts";
+import { createUser } from "./users.ts";
+import { syncMarkets } from "./market-sync.ts";
 import {
   activityFor,
   BET_QUICK_AMOUNTS,
@@ -76,6 +79,54 @@ export function registerRoutes(router: Router, db: Db): void {
   router.get("/api/sidebar-menu", () => SIDEBAR_MENU);
   router.get("/api/leaderboard", () => LEADERBOARD);
 
+  // ---- 建号（托管地址 + 白名单 + gas）----
+  router.post("/api/users", async ({ req }) => {
+    const body = await readJson<{ creator?: string }>(req);
+    return createUser(db, body.creator);
+  });
+
+  router.get("/api/users/:address", async ({ params }) => {
+    const row = db
+      .prepare("SELECT id, address, created_at FROM users WHERE LOWER(address) = LOWER(?)")
+      .get(params.address) as { id: number; address: string; created_at: number } | undefined;
+    if (!row) throw new HttpError(404, `用户不存在：${params.address}`);
+    return row;
+  });
+
+  // ---- 领体验币（用户地址自己 mint）----
+  router.post("/api/faucet", async ({ req }) => {
+    const body = await readJson<{ address?: string; betToken?: string; amount?: string | number }>(req);
+    if (!body.address) throw new HttpError(400, "缺少 address");
+    if (!body.betToken) throw new HttpError(400, "缺少 betToken");
+    if (body.amount === undefined) throw new HttpError(400, "缺少 amount");
+    return mintForUser(db, body.address, body.betToken, String(body.amount));
+  });
+
+  // ---- 下注（后端代签，txHash 落库）----
+  router.post("/api/bet", async ({ req }) => {
+    const body = await readJson<{
+      address?: string;
+      market?: string;
+      betToken?: string;
+      side?: string;
+      amount?: string | number;
+    }>(req);
+    if (!body.address) throw new HttpError(400, "缺少 address");
+    if (!body.market) throw new HttpError(400, "缺少 market");
+    if (!body.betToken) throw new HttpError(400, "缺少 betToken");
+    if (!body.side) throw new HttpError(400, "缺少 side");
+    if (body.amount === undefined) throw new HttpError(400, "缺少 amount");
+    return placeBet(db, {
+      address: body.address,
+      market: body.market,
+      betToken: body.betToken,
+      side: body.side,
+      amount: String(body.amount),
+    });
+  });
+
+  // ---- 链上配置自检（人工触发一次即可）----
+  router.post("/api/markets/sync", async () => syncMarkets(db));
   // ---- 市场（标的 × 下注代币）----
   router.get("/api/markets", () => listMarkets(db));
 
