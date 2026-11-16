@@ -118,11 +118,16 @@ export function roundCountdownFor(startBlock: number, block: number): number {
   return 0;
 }
 
+/**
+ * 时间轴上的四轮。上一行放「当前轮 + 下一轮」，下一行放「前两轮」：
+ * 合约的轮次是首尾相接的，如果像 mock 那样一行隔一轮，两行会变成棋盘、
+ * 每行中间空一整格；按组排则每行都是一条连续的带子，两条带在轴中点相接。
+ */
 const TIMELINE_DEFS: Array<{ offset: number; lane: "top" | "bottom" }> = [
-  { offset: -2, lane: "top" },
+  { offset: -2, lane: "bottom" },
   { offset: -1, lane: "bottom" },
   { offset: 0, lane: "top" },
-  { offset: 1, lane: "bottom" },
+  { offset: 1, lane: "top" },
 ];
 
 /**

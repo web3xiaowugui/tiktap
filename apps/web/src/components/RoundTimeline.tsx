@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent }
 import { cn } from "@/lib/cn";
 import { fmtBlock, fmtQty } from "@/lib/format";
 import {
-  ROUND_INTERVAL_BLOCKS,
   getTimelineRounds,
   type RoundStatus,
   type TimelineRound,
@@ -74,17 +73,18 @@ export function RoundTimeline({
     100,
     Math.max(0, ((block - domainStart) / domain) * 100),
   );
-  const tickCount =
-    trackWidth > 0 && trackWidth < 560
-      ? 4
-      : Math.round(domain / ROUND_INTERVAL_BLOCKS) + 1;
-  const ticks = Array.from({ length: tickCount }, (_, index) => {
-    const ratio = tickCount > 1 ? index / (tickCount - 1) : 0;
-    return {
+  // 刻度打在轮次边界上（正好每格 25%）；窗口窄就隔一格打一个，
+  // 不要用固定数量把数字挤到格子中间去。
+  const ROUND_SLOTS = rounds.length;
+  const tickStep = trackWidth > 0 && trackWidth < 420 ? 2 : 1;
+  const ticks: Array<{ block: number; left: number }> = [];
+  for (let index = 0; index <= ROUND_SLOTS; index += tickStep) {
+    const ratio = index / ROUND_SLOTS;
+    ticks.push({
       block: Math.round(domainStart + ratio * domain),
       left: ratio * 100,
-    };
-  });
+    });
+  }
 
   const topRounds = rounds.filter((round) => round.lane === "top");
   const bottomRounds = rounds.filter((round) => round.lane === "bottom");
@@ -112,13 +112,18 @@ export function RoundTimeline({
 
         <div className="relative h-[30px]">
           <div className="absolute inset-x-0 top-1/2 h-px bg-line" />
-          {ticks.map((tick) => (
+          {ticks.map((tick, index) => (
             <div
               key={tick.block}
-              className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
-              style={{
-                left: `clamp(48px, ${tick.left}%, calc(100% - 48px))`,
-              }}
+              className={cn(
+                "absolute top-1/2 -translate-y-1/2",
+                index === 0
+                  ? ""
+                  : index === ticks.length - 1
+                    ? "-translate-x-full"
+                    : "-translate-x-1/2",
+              )}
+              style={{ left: `${tick.left}%` }}
             >
               <span
                 title={fmtBlock(tick.block)}
