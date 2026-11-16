@@ -106,8 +106,8 @@ contract PoolMarketTest is Test {
         vm.roll(ANCHOR + 300);
         _bet(bob, MARKET_TEST, DOWN, 10 ether);
 
-        (uint256 up0, uint256 down0, , ) = market.pools(0, MARKET_TEST);
-        (uint256 up1, uint256 down1, , ) = market.pools(1, MARKET_TEST);
+        (uint256 up0, uint256 down0,,) = market.pools(0, MARKET_TEST);
+        (uint256 up1, uint256 down1,,) = market.pools(1, MARKET_TEST);
         assertEq(up0, 10 ether);
         assertEq(down0, 0);
         assertEq(up1, 0);
@@ -122,10 +122,8 @@ contract PoolMarketTest is Test {
         assertEq(testToken.balanceOf(alice), 900 ether);
         assertEq(testToken.balanceOf(address(market)), 100 ether);
 
-        (uint256 upAmount, uint256 downAmount, uint8 winner, bool settled) = market.pools(
-            0,
-            MARKET_TEST
-        );
+        (uint256 upAmount, uint256 downAmount, uint8 winner, bool settled) =
+            market.pools(0, MARKET_TEST);
         assertEq(upAmount, 100 ether);
         assertEq(downAmount, 0);
         assertEq(winner, 0);
@@ -145,7 +143,7 @@ contract PoolMarketTest is Test {
         assertEq(up, 10 ether);
         assertEq(down, 20 ether);
 
-        (uint256 upAmount, uint256 downAmount, , ) = market.pools(0, MARKET_TEST);
+        (uint256 upAmount, uint256 downAmount,,) = market.pools(0, MARKET_TEST);
         assertEq(upAmount, 40 ether);
         assertEq(downAmount, 20 ether);
     }
@@ -206,11 +204,11 @@ contract PoolMarketTest is Test {
         _bet(bob, MARKET_OKB, DOWN, 50 ether);
         _bet(alice, MARKET_BEM, UP, 70 ether);
 
-        (uint256 upOkb, uint256 downOkb, , ) = market.pools(0, MARKET_OKB);
+        (uint256 upOkb, uint256 downOkb,,) = market.pools(0, MARKET_OKB);
         assertEq(upOkb, 100 ether);
         assertEq(downOkb, 50 ether);
 
-        (uint256 upBem, uint256 downBem, , ) = market.pools(0, MARKET_BEM);
+        (uint256 upBem, uint256 downBem,,) = market.pools(0, MARKET_BEM);
         assertEq(upBem, 70 ether);
         assertEq(downBem, 0);
 
@@ -229,8 +227,8 @@ contract PoolMarketTest is Test {
         vm.prank(operatorAddr);
         market.settle(MARKET_OKB, 0, UP);
 
-        (, , , bool okbSettled) = market.pools(0, MARKET_OKB);
-        (, , , bool bemSettled) = market.pools(0, MARKET_BEM);
+        (,,, bool okbSettled) = market.pools(0, MARKET_OKB);
+        (,,, bool bemSettled) = market.pools(0, MARKET_BEM);
         assertTrue(okbSettled);
         assertFalse(bemSettled);
 
@@ -444,11 +442,11 @@ contract PoolMarketTest is Test {
         vm.roll(ANCHOR + 300);
         _bet(bob, MARKET_TEST, DOWN, 70 ether);
 
-        (uint256 upAmount, uint256 downAmount, , ) = market.pools(0, MARKET_TEST);
+        (uint256 upAmount, uint256 downAmount,,) = market.pools(0, MARKET_TEST);
         assertEq(upAmount, 50 ether);
         assertEq(downAmount, 0);
 
-        (uint256 up1, uint256 down1, , ) = market.pools(1, MARKET_TEST);
+        (uint256 up1, uint256 down1,,) = market.pools(1, MARKET_TEST);
         assertEq(up1, 0);
         assertEq(down1, 70 ether);
 
@@ -505,5 +503,243 @@ contract PoolMarketTest is Test {
 
         _bet(alice, MARKET_TEST, UP, 10 ether);
         assertEq(bemToken.balanceOf(address(market)), 10 ether);
+    }
+
+    // ------------------------------------------------------------ 手续费
+
+    /// 默认不收费：两个费率为 0，收款地址默认是 operator。
+    function testFeesDefaultToZero() public view {
+        assertEq(market.defaultBetFeeBps(), 0);
+        assertEq(market.defaultClaimFeeBps(), 0);
+        assertEq(market.feeRecipient(), operatorAddr);
+        assertEq(market.betFeeBps(MARKET_TEST), 0);
+        assertEq(market.claimFeeBps(MARKET_TEST), 0);
+    }
+
+    function testSetDefaultFees() public {
+        vm.prank(operatorAddr);
+        market.setDefaultFees(100, 200);
+
+        assertEq(market.defaultBetFeeBps(), 100);
+        assertEq(market.defaultClaimFeeBps(), 200);
+        // 没有覆盖的市场都吃默认值
+        assertEq(market.betFeeBps(MARKET_TEST), 100);
+        assertEq(market.betFeeBps(MARKET_OKB), 100);
+        assertEq(market.claimFeeBps(MARKET_BEM), 200);
+    }
+
+    function testSetMarketFeesOverridesDefaults() public {
+        vm.startPrank(operatorAddr);
+        market.setDefaultFees(100, 100);
+        market.setMarketFees(MARKET_BEM, 300, 500);
+        vm.stopPrank();
+
+        assertEq(market.betFeeBps(MARKET_TEST), 100);
+        assertEq(market.claimFeeBps(MARKET_TEST), 100);
+        assertEq(market.betFeeBps(MARKET_BEM), 300);
+        assertEq(market.claimFeeBps(MARKET_BEM), 500);
+    }
+
+    function testClearMarketFeesFallsBackToDefaults() public {
+        vm.startPrank(operatorAddr);
+        market.setDefaultFees(100, 200);
+        market.setMarketFees(MARKET_OKB, 300, 400);
+        vm.stopPrank();
+
+        assertEq(market.betFeeBps(MARKET_OKB), 300);
+        assertEq(market.claimFeeBps(MARKET_OKB), 400);
+
+        vm.prank(operatorAddr);
+        market.clearMarketFees(MARKET_OKB);
+
+        assertEq(market.betFeeBps(MARKET_OKB), 100);
+        assertEq(market.claimFeeBps(MARKET_OKB), 200);
+    }
+
+    function testOnlyOperatorCanConfigureFees() public {
+        vm.prank(alice);
+        vm.expectRevert(PoolMarket.NotOperator.selector);
+        market.setDefaultFees(100, 100);
+
+        vm.prank(alice);
+        vm.expectRevert(PoolMarket.NotOperator.selector);
+        market.setMarketFees(MARKET_TEST, 100, 100);
+
+        vm.prank(alice);
+        vm.expectRevert(PoolMarket.NotOperator.selector);
+        market.clearMarketFees(MARKET_TEST);
+
+        vm.prank(alice);
+        vm.expectRevert(PoolMarket.NotOperator.selector);
+        market.setFeeRecipient(carol);
+    }
+
+    function testFeeTooHighReverts() public {
+        vm.prank(operatorAddr);
+        vm.expectRevert(PoolMarket.FeeTooHigh.selector);
+        market.setDefaultFees(10_001, 0);
+
+        vm.prank(operatorAddr);
+        vm.expectRevert(PoolMarket.FeeTooHigh.selector);
+        market.setMarketFees(MARKET_TEST, 0, 10_001);
+    }
+
+    function testFeeRecipientMustNotBeZero() public {
+        vm.prank(operatorAddr);
+        vm.expectRevert(PoolMarket.ZeroAddress.selector);
+        market.setFeeRecipient(address(0));
+    }
+
+    /// 1% 下注费：用户付 100，1 进手续费地址，99 进池子和仓位。
+    function testBetFeeIsDeductedFromStake() public {
+        vm.prank(operatorAddr);
+        market.setDefaultFees(100, 0);
+
+        uint256 recipientBefore = testToken.balanceOf(operatorAddr);
+        _bet(alice, MARKET_TEST, UP, 100 ether);
+
+        assertEq(testToken.balanceOf(alice), 900 ether);
+        assertEq(testToken.balanceOf(operatorAddr) - recipientBefore, 1 ether);
+        assertEq(testToken.balanceOf(address(market)), 99 ether);
+
+        (uint256 up, uint256 down) = market.stakeOf(MARKET_TEST, 0, alice);
+        assertEq(up, 99 ether);
+        assertEq(down, 0);
+
+        (uint256 upAmount, uint256 downAmount,,) = market.pools(0, MARKET_TEST);
+        assertEq(upAmount, 99 ether);
+        assertEq(downAmount, 0);
+    }
+
+    function testBetFeeUsesPerMarketOverride() public {
+        vm.startPrank(operatorAddr);
+        market.setDefaultFees(0, 0);
+        market.setMarketFees(MARKET_BEM, 100, 0);
+        vm.stopPrank();
+
+        uint256 recipientBefore = bemToken.balanceOf(operatorAddr);
+        _bet(alice, MARKET_BEM, UP, 100 ether);
+        assertEq(bemToken.balanceOf(operatorAddr) - recipientBefore, 1 ether);
+        assertEq(bemToken.balanceOf(address(market)), 99 ether);
+
+        // 另一个市场没覆盖，仍然 0 费
+        uint256 testBefore = testToken.balanceOf(address(market));
+        _bet(alice, MARKET_TEST, UP, 100 ether);
+        assertEq(testToken.balanceOf(address(market)) - testBefore, 100 ether);
+    }
+
+    /// 1% 领奖费：赢家派奖 200，2 进手续费地址，198 到手。
+    function testClaimFeeIsDeductedFromPayout() public {
+        vm.prank(operatorAddr);
+        market.setDefaultFees(0, 100);
+
+        _bet(alice, MARKET_TEST, UP, 100 ether);
+        _bet(bob, MARKET_TEST, DOWN, 100 ether);
+
+        _endRound(0);
+        vm.prank(operatorAddr);
+        market.settle(MARKET_TEST, 0, UP);
+
+        assertEq(market.previewClaimGross(MARKET_TEST, 0, alice), 200 ether);
+        assertEq(market.previewClaim(MARKET_TEST, 0, alice), 198 ether);
+
+        uint256 aliceBefore = testToken.balanceOf(alice);
+        uint256 recipientBefore = testToken.balanceOf(operatorAddr);
+        vm.prank(alice);
+        market.claim(MARKET_TEST, 0);
+
+        assertEq(testToken.balanceOf(alice) - aliceBefore, 198 ether);
+        assertEq(testToken.balanceOf(operatorAddr) - recipientBefore, 2 ether);
+        assertEq(testToken.balanceOf(address(market)), 0);
+    }
+
+    /// 费率在结算时快照：结算后改费率，不影响已结算这一轮的领奖。
+    function testClaimFeeIsSnapshottedAtSettlement() public {
+        vm.prank(operatorAddr);
+        market.setDefaultFees(0, 100);
+
+        _bet(alice, MARKET_TEST, UP, 100 ether);
+        _bet(bob, MARKET_TEST, DOWN, 100 ether);
+
+        _endRound(0);
+        vm.prank(operatorAddr);
+        market.settle(MARKET_TEST, 0, UP);
+
+        // 结算后把领奖费改成 5%
+        vm.prank(operatorAddr);
+        market.setDefaultFees(0, 500);
+
+        assertEq(market.roundClaimFeeBps(0, MARKET_TEST), 100);
+        assertEq(market.previewClaim(MARKET_TEST, 0, alice), 198 ether);
+
+        uint256 aliceBefore = testToken.balanceOf(alice);
+        vm.prank(alice);
+        market.claim(MARKET_TEST, 0);
+        assertEq(testToken.balanceOf(alice) - aliceBefore, 198 ether);
+    }
+
+    /// 退款轮不收养奖费：单边池和 VOID 都原额退回。
+    function testRefundSkipsClaimFee() public {
+        vm.prank(operatorAddr);
+        market.setDefaultFees(0, 500);
+
+        _bet(alice, MARKET_TEST, UP, 100 ether);
+        _endRound(0);
+        vm.prank(operatorAddr);
+        market.settle(MARKET_TEST, 0, DOWN);
+
+        uint256 aliceBefore = testToken.balanceOf(alice);
+        uint256 recipientBefore = testToken.balanceOf(operatorAddr);
+        vm.prank(alice);
+        market.claim(MARKET_TEST, 0);
+
+        assertEq(testToken.balanceOf(alice) - aliceBefore, 100 ether);
+        assertEq(testToken.balanceOf(operatorAddr) - recipientBefore, 0);
+        assertEq(testToken.balanceOf(address(market)), 0);
+    }
+
+    function testVoidRoundSkipsClaimFee() public {
+        vm.prank(operatorAddr);
+        market.setDefaultFees(0, 500);
+
+        _bet(alice, MARKET_TEST, UP, 120 ether);
+        _bet(bob, MARKET_TEST, DOWN, 80 ether);
+
+        _endRound(0);
+        vm.prank(operatorAddr);
+        market.settle(MARKET_TEST, 0, VOID);
+
+        uint256 recipientBefore = testToken.balanceOf(operatorAddr);
+
+        uint256 aliceBefore = testToken.balanceOf(alice);
+        vm.prank(alice);
+        market.claim(MARKET_TEST, 0);
+        assertEq(testToken.balanceOf(alice) - aliceBefore, 120 ether);
+
+        uint256 bobBefore = testToken.balanceOf(bob);
+        vm.prank(bob);
+        market.claim(MARKET_TEST, 0);
+        assertEq(testToken.balanceOf(bob) - bobBefore, 80 ether);
+
+        assertEq(testToken.balanceOf(operatorAddr) - recipientBefore, 0);
+        assertEq(testToken.balanceOf(address(market)), 0);
+    }
+
+    function testFeeRecipientCanBeChanged() public {
+        vm.startPrank(operatorAddr);
+        market.setDefaultFees(100, 0);
+        market.setFeeRecipient(carol);
+        vm.stopPrank();
+
+        uint256 carolBefore = testToken.balanceOf(carol);
+        _bet(alice, MARKET_TEST, UP, 100 ether);
+        assertEq(testToken.balanceOf(carol) - carolBefore, 1 ether);
+        assertEq(market.feeRecipient(), carol);
+    }
+
+    function testSetMarketFeesRejectsZeroMarket() public {
+        vm.prank(operatorAddr);
+        vm.expectRevert(PoolMarket.UnknownMarket.selector);
+        market.setMarketFees(0, 100, 100);
     }
 }

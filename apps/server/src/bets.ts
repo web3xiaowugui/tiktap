@@ -16,14 +16,16 @@ export interface BetRowInput {
   roundId: number;
   side: number;
   amountWei: string;
+  /** 下注手续费；仓位 = amountWei - feeWei。 */
+  feeWei?: string;
   txHash: string;
   status: "confirmed" | "failed";
 }
 
 export function recordBet(db: Db, input: BetRowInput): void {
   db.prepare(
-    "INSERT INTO bets (user_id, address, market_id, symbol, bet_token, round_id, side, amount_wei, tx_hash, status, created_at) " +
-      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+    "INSERT INTO bets (user_id, address, market_id, symbol, bet_token, round_id, side, amount_wei, fee_wei, tx_hash, status, created_at) " +
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
       "ON CONFLICT(tx_hash) DO UPDATE SET status = excluded.status",
   ).run(
     input.userId,
@@ -34,6 +36,7 @@ export function recordBet(db: Db, input: BetRowInput): void {
     input.roundId,
     input.side,
     input.amountWei,
+    input.feeWei ?? "0",
     input.txHash,
     input.status,
     Date.now(),
@@ -49,11 +52,14 @@ export interface SettlementInput {
   /** 本轮该市场两边总下注额（最小单位），用于算每笔应得的派奖。 */
   upWei: string;
   downWei: string;
+  /** 结算时快照的领奖费率（bps），缺省按 0。 */
+  claimFeeBps?: number;
 }
 
 /**
  * 结算后回填这一轮该市场的所有下注记录：
  * 赢的那一边按「总池 / 赢方总额」比例算每笔 payout，输的记 0。
+ * 仓位用扣除下注费后的净额；派奖再扣掉结算时快照的领奖费（退款轮不收）。
  */
 export function applySettlement(
   db: Db,
@@ -63,12 +69,21 @@ export function applySettlement(
 ): void {
   const rows = db
     .prepare(
-      "SELECT id, side, amount_wei FROM bets WHERE market_id = ? AND round_id = ?",
+      "SELECT id, side, amount_wei, fee_wei FROM bets WHERE market_id = ? AND round_id = ?",
     )
-    .all(marketId, roundId) as Array<{ id: number; side: number; amount_wei: string }>;
+    .all(marketId, roundId) as Array<{
+    id: number;
+    side: number;
+    amount_wei: string;
+    fee_wei: string | null;
+  }>;
 
-  const pot = BigInt(input.upWei) + BigInt(input.downWei);
-  const winWei = input.winnerSide === 0 ? BigInt(input.upWei) : BigInt(input.downWei);
+  const upWei = BigInt(input.upWei);
+  const downWei = BigInt(input.downWei);
+  const pot = upWei + downWei;
+  const winWei = input.winnerSide === 0 ? upWei : downWei;
+  const isRefund = input.winnerSide === 2 || upWei === 0n || downWei === 0n;
+  const claimFeeBps = BigInt(input.claimFeeBps ?? 0);
 
   const update = db.prepare(
     "UPDATE bets SET winner_side = ?, lock_price = ?, settle_price = ?, settled_at = ?, payout_wei = ? WHERE id = ?",
@@ -76,15 +91,17 @@ export function applySettlement(
   const now = Date.now();
 
   for (const row of rows) {
+    const stake = BigInt(row.amount_wei) - BigInt(row.fee_wei ?? "0");
     const won = row.side === input.winnerSide;
-    const payoutWei =
-      won && winWei > 0n ? ((pot * BigInt(row.amount_wei)) / winWei).toString() : "0";
+    // 退款轮按净仓位原额退回，和合约保持一致。
+    const gross = isRefund ? stake : won && winWei > 0n ? (pot * stake) / winWei : 0n;
+    const payout = isRefund ? gross : gross - (gross * claimFeeBps) / 10_000n;
     update.run(
       input.winnerSide,
       input.lockPrice == null ? null : input.lockPrice.toFixed(10),
       input.settlePrice == null ? null : input.settlePrice.toFixed(10),
       now,
-      payoutWei,
+      payout.toString(),
       row.id,
     );
   }
@@ -114,6 +131,7 @@ export interface BetRow {
   round_id: number;
   side: number;
   amount_wei: string;
+  fee_wei: string | null;
   tx_hash: string;
   status: string;
   winner_side: number | null;
@@ -139,7 +157,7 @@ export function listBets(
 
   return db
     .prepare(
-      `SELECT id, user_id, address, market_id, symbol, bet_token, round_id, side, amount_wei,
+      `SELECT id, user_id, address, market_id, symbol, bet_token, round_id, side, amount_wei, fee_wei,
               tx_hash, status, winner_side, lock_price, settle_price, payout_wei,
               claimed_at, claim_tx_hash, created_at, settled_at
        FROM bets ${clause} ORDER BY id DESC LIMIT ${limit}`,

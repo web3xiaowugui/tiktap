@@ -29,6 +29,26 @@ export interface RoundInfo {
   blocksLeftInWindow: number;
 }
 
+/** 读结算时快照下来的领奖费率；老合约没有这个 getter 时按 0 处理。 */
+async function readRoundClaimFeeBps(
+  market: Address,
+  marketId: number,
+  roundIndex: number,
+): Promise<number> {
+  try {
+    return Number(
+      await publicClient.readContract({
+        address: market,
+        abi: POOL_MARKET_ABI,
+        functionName: "roundClaimFeeBps",
+        args: [BigInt(roundIndex), marketId],
+      }),
+    );
+  } catch {
+    return 0;
+  }
+}
+
 export async function getRoundInfo(cfg: ChainConfig): Promise<RoundInfo> {
   const market = requireMarket(cfg);
   const blockNumber = Number(await publicClient.getBlockNumber());
@@ -185,6 +205,7 @@ export async function settleMarket(
     settlePrice: prices?.settlePrice ?? null,
     upWei: upAmount.toString(),
     downWei: downAmount.toString(),
+    claimFeeBps: await readRoundClaimFeeBps(market, marketId, roundIndex),
   });
 
   // 结算完直接替用户代领（托管模式，用户不用自己点）
@@ -441,6 +462,7 @@ export async function backfillBetResults(db: Db, cfg: ChainConfig): Promise<numb
       settlePrice: price?.settlePrice ?? null,
       upWei: upAmount.toString(),
       downWei: downAmount.toString(),
+      claimFeeBps: await readRoundClaimFeeBps(market, group.market_id, group.round_id),
     });
     filled += 1;
   }

@@ -60,9 +60,18 @@ pnpm contracts:node    # anvil --block-time 1 --chain-id 195
 bet(uint8 marketId, uint8 side, uint256 amount)            // 白名单 + 当前轮 + 该市场已启用
 settle(uint8 marketId, uint256 roundIndex, uint8 winner)   // 仅 operator
 claim(uint8 marketId, uint256 roundIndex)                  // 付该市场的代币
-previewClaim(uint8 marketId, uint256 roundIndex, address user) view  // 前端「预计可领」
+previewClaim(uint8 marketId, uint256 roundIndex, address user) view  // 到手数量（已扣领奖费）
+previewClaimGross(uint8 marketId, uint256 roundIndex, address user) view // 扣费前的派奖
 setMarket(uint8 marketId, address token, bool enabled)     // 仅 operator
 setAllowed / setAllowedBatch / setOperator                 // 仅 operator
+
+// 手续费（仅 operator）
+setDefaultFees(uint16 betBps, uint16 claimBps)
+setMarketFees(uint8 marketId, uint16 betBps, uint16 claimBps)
+clearMarketFees(uint8 marketId)
+setFeeRecipient(address)
+betFeeBps(uint8 marketId) / claimFeeBps(uint8 marketId) view
+roundClaimFeeBps(uint256 roundIndex, uint8 marketId) view  // 结算时的领奖费快照
 ```
 
 - **市场各自绑定一个 ERC20**：`markets[marketId].token`。下注按该代币 pull，派奖也按该代币付。
@@ -76,6 +85,19 @@ setAllowed / setAllowedBatch / setOperator                 // 仅 operator
 - **派奖**：`payout = 自己押注 × 池子总额 / 赢家池`，向下取整，零头留合约（不做二次分配）。
 - **退款**：`winner == SIDE_VOID`，或某一边金额为 0（单边池）→ 两边都原额退回。
 - **重入**：先置 `claimed` 再转账。
+
+### 手续费
+
+- 单位是 bps，`1% = 100`，上限 `10_000`（100%）；**默认 0，即不收费**。
+- 全局默认 `defaultBetFeeBps` / `defaultClaimFeeBps` 分开配置，互不影响。
+- 每个市场可以用 `marketFees[marketId]` 覆盖；`clearMarketFees` 删掉覆盖后回退到全局默认。
+- **下注费**：从下注金额里先扣，`amount - fee` 才计入用户仓位和池子；手续费立刻打给 `feeRecipient`。
+  `Bet` 事件里的 amount 是净仓位，`FeeCharged(kind = 0)` 记录毛额和实际手续费。
+- **领奖费**：按**结算时快照**的费率收，结算后再改费率不影响已结算轮次；
+  退款轮（VOID / 单边池）不收费，本金原样退回。`Claimed` 事件里的 amount 是到手的净额。
+- `feeRecipient` 默认是部署时的 `operator`，可用 `setFeeRecipient` 换成金库 / 多签。
+- 前端「预计可领」用 `previewClaim`（净额）；需要展示明细时用 `previewClaimGross` 和
+  `roundClaimFeeBps` 算手续费。
 
 ## 部署
 
@@ -102,6 +124,11 @@ PRIVATE_KEY=0xac09... pnpm contracts:deploy      # 终端 B，记下 market / �
 # operator 配置市场（marketId 1 = 某个「标的×代币」组合）
 cast send $MARKET "setMarket(uint8,address,bool)" 1 $TOKEN true --private-key $OP_KEY ...
 
+# 手续费：默认 0；1% = 100 bps。下注费 / 领奖费分开配
+cast send $MARKET "setDefaultFees(uint16,uint16)" 100 0 --private-key $OP_KEY ...
+# 单独给 marketId 1 覆盖：下注 0、领奖 1%
+cast send $MARKET "setMarketFees(uint8,uint16,uint16)" 1 0 100 --private-key $OP_KEY ...
+
 # 用户下注（先放行 + 领币 + 授权）
 cast send $MARKET "setAllowed(address,bool)" $USER1 true --private-key $OP_KEY ...
 cast send $TOKEN  "mint(uint256)" 3000000000000000000      --private-key $USER1_KEY ...
@@ -115,7 +142,7 @@ cast send $MARKET "claim(uint8,uint256)" 1 0 --private-key $USER1_KEY ...
 
 ## 测试覆盖
 
-41 个用例（`TikTapToken.t.sol` + `PoolMarket.t.sol`）：
+56 个用例（`TikTapToken.t.sol` + `PoolMarket.t.sol`）：
 
 - 代币：mint 上限 / 超额 revert / 转账 / 授权递减 / 无限授权 / 余额不足
 - 轮次：`vm.roll` 验证 0/1 轮边界、299→300 块封盘、封盘后不能下注
@@ -125,3 +152,4 @@ cast send $MARKET "claim(uint8,uint256)" 1 0 --private-key $USER1_KEY ...
 - 退款：单边池全额退、VOID 双边各退各的
 - 跨轮：第 0 轮与第 1 轮互不污染
 - 取整：`100*700/300=233`、`200*700/300=466`，700 进池 699 派出，1 wei 零头留合约
+- 手续费：默认 0 / 全局与市场覆盖 / 清除回退 / 下注扣费进池 / 领奖快照 / 退款免收 / 权限与 100% 上限

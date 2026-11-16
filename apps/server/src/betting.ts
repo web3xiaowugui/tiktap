@@ -36,6 +36,22 @@ export interface BetResult {
 
 const MAX_UINT256 = 2n ** 256n - 1n;
 
+/** 读该市场当前的下注费率（bps）。老合约没有这个 view 时按 0 处理。 */
+async function readBetFeeBps(market: Address, marketId: number): Promise<number> {
+  try {
+    return Number(
+      await publicClient.readContract({
+        address: market,
+        abi: POOL_MARKET_ABI,
+        functionName: "betFeeBps",
+        args: [marketId],
+      }),
+    );
+  } catch {
+    return 0;
+  }
+}
+
 /**
  * 下注：校验 → 必要时补授权 → 用用户托管私钥发 bet → txHash 落库 → 查 receipt 回填状态。
  * 所有写操作都串行到同一个地址，避免 nonce 相撞。
@@ -147,6 +163,10 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
       approveTxHash = hash;
     }
 
+    // 合约按下注金额收手续费；这里按同一份费率算净仓位，结算 payout 用净额。
+    const feeBps = await readBetFeeBps(cfg.market!, marketId);
+    const feeWei = feeBps > 0 ? (amountWei * BigInt(feeBps)) / 10_000n : 0n;
+
     const hash = await wallet.writeContract({
       address: cfg.market!,
       abi: POOL_MARKET_ABI,
@@ -187,6 +207,7 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
       roundId: roundIndex,
       side,
       amountWei: amountWei.toString(),
+      feeWei: feeWei.toString(),
       txHash: hash,
       status: "confirmed",
     });

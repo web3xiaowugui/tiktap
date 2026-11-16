@@ -159,10 +159,10 @@ POST /api/claim
 | 文件 | 内容 |
 | --- | --- |
 | `contracts/src/TikTapToken.sol` | 下注代币，公开 `mint` + 单地址上限 |
-| `contracts/src/PoolMarket.sol` | 二元彩池：市场 = 标的×下注代币（每市场绑一个 ERC20），池子 = (市场, 轮次)；白名单、每 300 块起一轮（每轮 600 块 = 300 下注 + 300 封盘，两轮重叠）、operator 结算、按份额派奖、单边退款 |
+| `contracts/src/PoolMarket.sol` | 二元彩池：市场 = 标的×下注代币（每市场绑一个 ERC20），池子 = (市场, 轮次)；白名单、每 300 块起一轮（每轮 600 块 = 300 下注 + 300 封盘，两轮重叠）、operator 结算、按份额派奖、单边退款；下注/领奖手续费可配置（默认 0，全局分项 + 市场覆盖） |
 
 ```bash
-pnpm contracts:test      # 41 个用例，内存 EVM，约 12ms
+pnpm contracts:test      # 56 个用例，内存 EVM，约 12ms
 pnpm contracts:node      # anvil：1 秒一块、chain id 195、RPC 8545
 PRIVATE_KEY=0x... pnpm contracts:deploy   # 部署到本地 anvil
 ```

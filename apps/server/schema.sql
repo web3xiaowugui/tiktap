@@ -66,7 +66,8 @@ CREATE TABLE IF NOT EXISTS bets (
   bet_token     TEXT NOT NULL,
   round_id      INTEGER NOT NULL,     -- 合约 roundIndex
   side          INTEGER NOT NULL,     -- 0 = 涨, 1 = 跌
-  amount_wei    TEXT NOT NULL,
+  amount_wei    TEXT NOT NULL,        -- 用户实际支付的总额（含手续费）
+  fee_wei       TEXT,                 -- 下注手续费（最小单位）；仓位 = amount_wei - fee_wei
   tx_hash       TEXT UNIQUE NOT NULL,
   status        TEXT NOT NULL,        -- confirmed | failed
   winner_side   INTEGER,              -- 结算结果，0/1
