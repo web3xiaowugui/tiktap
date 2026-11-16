@@ -40,7 +40,8 @@ export default function Landing() {
     let alive = true;
     void finishXLogin(ticket)
       .then(() => {
-        if (alive) navigate("/discover", { replace: true });
+        // 登录态已写进 localStorage，这里直接整页跳，避免路由/状态时序问题
+        window.location.replace("/discover");
       })
       .catch((caught: unknown) => {
         if (alive) {
@@ -51,7 +52,7 @@ export default function Landing() {
     return () => {
       alive = false;
     };
-  }, [finishXLogin, navigate, push]);
+  }, [finishXLogin, push]);
 
   const openAuth = () => setAuthOpen(true);
 

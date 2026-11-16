@@ -14,7 +14,12 @@ export function openDb(path: string = process.env.DB_PATH ?? defaultDbPath): Db 
   mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   db.exec(readFileSync(schemaPath, "utf8"));
+  // 并发写入时不要直接抛 SQLITE_BUSY，排队等一会儿；WAL 下 NORMAL 已经够安全
+  db.exec("PRAGMA busy_timeout = 5000");
+  db.exec("PRAGMA synchronous = NORMAL");
   ensureColumn(db, "users", "x_user_id", "x_user_id TEXT");
+  ensureColumn(db, "users", "x_handle", "x_handle TEXT");
+  ensureColumn(db, "users", "x_name", "x_name TEXT");
   db.exec(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_x ON users(x_user_id)",
   );

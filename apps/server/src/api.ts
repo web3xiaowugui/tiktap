@@ -106,20 +106,31 @@ export function registerRoutes(router: Router, db: Db): void {
 
   // ---- 建号（托管地址 + 白名单 + gas）----
   router.post("/api/users", async ({ req }) => {
-    const body = await readJson<{ creator?: string; xUserId?: string }>(req);
-    return createUser(db, body.creator, body.xUserId?.trim() || undefined);
+    const body = await readJson<{
+      creator?: string;
+      xUserId?: string;
+      handle?: string;
+      name?: string;
+    }>(req);
+    return createUser(db, body.creator, {
+      xUserId: body.xUserId?.trim() || undefined,
+      xHandle: body.handle?.trim() || undefined,
+      xName: body.name?.trim() || undefined,
+    });
   });
 
   router.get("/api/users/:address", async ({ params }) => {
     const row = db
       .prepare(
-        "SELECT id, address, x_user_id, created_at FROM users WHERE LOWER(address) = LOWER(?)",
+        "SELECT id, address, x_user_id, x_handle, x_name, created_at FROM users WHERE LOWER(address) = LOWER(?)",
       )
       .get(params.address) as
       | {
           id: number;
           address: string;
           x_user_id: string | null;
+          x_handle: string | null;
+          x_name: string | null;
           created_at: number;
         }
       | undefined;
@@ -128,6 +139,8 @@ export function registerRoutes(router: Router, db: Db): void {
       id: row.id,
       address: row.address,
       xUserId: row.x_user_id,
+      handle: row.x_handle,
+      name: row.x_name,
       created_at: row.created_at,
     };
   });

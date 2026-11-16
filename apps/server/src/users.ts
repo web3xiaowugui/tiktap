@@ -23,6 +23,13 @@ export interface CreatedUser {
   reused?: boolean;
 }
 
+/** X 账号资料；handle 会变，每次登录刷新。 */
+export interface XProfile {
+  xUserId?: string;
+  xHandle?: string;
+  xName?: string;
+}
+
 /**
  * 建号：生成托管地址 → 私钥加密入库 → 合约白名单放过 →（可选）打一点原生 gas。
  * 用户不持有私钥，交易由后端用这个地址签名发起。
@@ -30,14 +37,21 @@ export interface CreatedUser {
 export async function createUser(
   db: Db,
   creator?: string,
-  xUserId?: string,
+  profile: XProfile = {},
 ): Promise<CreatedUser> {
+  const { xUserId, xHandle, xName } = profile;
   const known = xUserId
     ? (db
         .prepare("SELECT id, address FROM users WHERE x_user_id = ?")
         .get(xUserId) as { id: number; address: string } | undefined)
     : undefined;
   if (known) {
+    // 复用账号时顺手刷新 handle/昵称（X 上改名、改 handle 都能跟上）
+    if (xHandle || xName) {
+      db.prepare(
+        "UPDATE users SET x_handle = COALESCE(?, x_handle), x_name = COALESCE(?, x_name) WHERE id = ?",
+      ).run(xHandle ?? null, xName ?? null, known.id);
+    }
     return {
       id: known.id,
       address: known.address,
@@ -57,9 +71,18 @@ export async function createUser(
 
   const result = db
     .prepare(
-      "INSERT INTO users (email, address, enc_pkey, creator, created_at, x_user_id) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO users (email, address, enc_pkey, creator, created_at, x_user_id, x_handle, x_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
-    .run(email, wallet.address, wallet.encPkey, creator ?? null, Date.now(), xUserId ?? null);
+    .run(
+      email,
+      wallet.address,
+      wallet.encPkey,
+      creator ?? null,
+      Date.now(),
+      xUserId ?? null,
+      xHandle ?? null,
+      xName ?? null,
+    );
   const id = Number(result.lastInsertRowid);
 
   const cfg = readConfig();
