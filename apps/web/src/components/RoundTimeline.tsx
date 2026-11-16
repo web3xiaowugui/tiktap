@@ -49,7 +49,7 @@ export function RoundTimeline({
   onSelect?: (round: TimelineRound) => void;
 }) {
   const clock = useChainClock();
-  const rounds = getTimelineRounds(block, clock.anchor);
+  const rounds = getTimelineRounds(block);
   const trackRef = useRef<HTMLDivElement>(null);
   const [trackWidth, setTrackWidth] = useState(0);
 

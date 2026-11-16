@@ -6,14 +6,14 @@ export const ROUND_DURATION_BLOCKS = 600;
 export const ROUND_BETTING_BLOCKS = 300;
 
 /**
- * 合约里轮次首尾相接、不重叠：第 n 轮 = [anchor + 600n, anchor + 600n + 600)。
+ * 合约里轮次完全按区块号派生：第 n 轮 = [300n, 300n + 600)，每 300 块起一轮。
  * 这里保持和 `PoolMarket.ROUND_BLOCKS` 一致，别再退回 300 的间隔。
  */
 export const ROUND_INTERVAL_BLOCKS = 300;
 
 /**
- * 本地兜底用的伪区块高度：只有拿不到 `/api/round` 时才用。
- * 真实运行时以链上 blockNumber + 部署块（anchor）为准，见 `roundStartFor`。
+ * 本地兜底用的伪区块高度：只有拿不到 `/api/round` 时才用（网格是全局 300 对齐的）。
+ * 真实运行时直接取链上 blockNumber，轮次边界就是 300 的整数倍，见 `roundStartFor`。
  */
 const FALLBACK_ANCHOR_BLOCK = 19_085_876;
 const FALLBACK_ANCHOR_TIME = Date.UTC(2026, 10, 5, 16, 0, 0);
@@ -48,25 +48,20 @@ export interface TimelineRound {
   partial?: "first" | "second";
 }
 
-/** 当前轮起点。`anchor` 是合约的 anchorBlock（第 0 轮起始块）。 */
-export function roundStartFor(block: number, anchor?: number | null): number {
-  if (anchor === null || anchor === undefined || block < anchor) {
-    return Math.floor(block / ROUND_INTERVAL_BLOCKS) * ROUND_INTERVAL_BLOCKS;
-  }
-  return anchor + Math.floor((block - anchor) / ROUND_INTERVAL_BLOCKS) * ROUND_INTERVAL_BLOCKS;
+/** 当前轮起点：直接对 300 取整（边界就是 300 的整数倍）。 */
+/** 轮次网格完全由区块号派生：每 300 块一轮，边界就是 300 的整数倍。 */
+export function roundStartFor(block: number): number {
+  return Math.floor(Math.max(0, block) / ROUND_INTERVAL_BLOCKS) * ROUND_INTERVAL_BLOCKS;
 }
 
-function roundNumberFor(startBlock: number, anchor?: number | null): number {
-  if (anchor !== null && anchor !== undefined && startBlock >= anchor) {
-    return Math.floor((startBlock - anchor) / ROUND_INTERVAL_BLOCKS);
-  }
-  return Math.floor(startBlock / ROUND_INTERVAL_BLOCKS) + 1;
+function roundNumberFor(startBlock: number): number {
+  return Math.floor(startBlock / ROUND_INTERVAL_BLOCKS);
 }
 
-function makeRound(startBlock: number, phase: RoundPhase, anchor?: number | null): RoundWindow {
+function makeRound(startBlock: number, phase: RoundPhase): RoundWindow {
   return {
     id: `round-${startBlock}`,
-    number: roundNumberFor(startBlock, anchor),
+    number: roundNumberFor(startBlock),
     startBlock,
     closeBlock: startBlock + ROUND_BETTING_BLOCKS,
     settleBlock: startBlock + ROUND_DURATION_BLOCKS,
@@ -74,22 +69,22 @@ function makeRound(startBlock: number, phase: RoundPhase, anchor?: number | null
   };
 }
 
-export function getActiveRound(block: number, anchor?: number | null): RoundWindow {
-  return makeRound(roundStartFor(block, anchor), "betting", anchor);
+export function getActiveRound(block: number): RoundWindow {
+  return makeRound(roundStartFor(block), "betting");
 }
 
-export function getPreviousRound(block: number, anchor?: number | null): RoundWindow {
-  const active = getActiveRound(block, anchor);
-  return makeRound(active.startBlock - ROUND_INTERVAL_BLOCKS, "waiting", anchor);
+export function getPreviousRound(block: number): RoundWindow {
+  const active = getActiveRound(block);
+  return makeRound(active.startBlock - ROUND_INTERVAL_BLOCKS, "waiting");
 }
 
-export function getRoundWindows(
-  block: number,
-  anchor?: number | null,
-): { active: RoundWindow; previous: RoundWindow } {
+export function getRoundWindows(block: number): {
+  active: RoundWindow;
+  previous: RoundWindow;
+} {
   return {
-    active: getActiveRound(block, anchor),
-    previous: getPreviousRound(block, anchor),
+    active: getActiveRound(block),
+    previous: getPreviousRound(block),
   };
 }
 
@@ -133,15 +128,15 @@ const TIMELINE_DEFS: Array<{ offset: number; lane: "top" | "bottom" }> = [
  * 时间轴上的四轮：上两轮/下两轮交替，状态按当前区块高度实时算出来
  * （旧版是按 offset 写死的，链上一动就错）。
  */
-export function getTimelineRounds(block: number, anchor?: number | null): TimelineRound[] {
-  const activeStart = roundStartFor(block, anchor);
+export function getTimelineRounds(block: number): TimelineRound[] {
+  const activeStart = roundStartFor(block);
 
   return TIMELINE_DEFS.map(({ offset, lane }) => {
     const startBlock = activeStart + offset * ROUND_INTERVAL_BLOCKS;
 
     return {
       id: `round-${startBlock}`,
-      number: roundNumberFor(startBlock, anchor),
+      number: roundNumberFor(startBlock),
       startBlock,
       closeBlock: startBlock + ROUND_BETTING_BLOCKS,
       settleBlock: startBlock + ROUND_DURATION_BLOCKS,

@@ -7,7 +7,7 @@ import { useBetToken } from "@/context/BetTokenContext";
 import { useChainClock } from "@/lib/chainClock";
 import { cn } from "@/lib/cn";
 import { fmtQty } from "@/lib/format";
-import { getTimelineRounds, type TimelineRound } from "@/lib/rounds";
+import { ROUND_INTERVAL_BLOCKS, getTimelineRounds, type TimelineRound } from "@/lib/rounds";
 import { useApi } from "@/lib/useApi";
 
 export function PoolPanel({
@@ -51,7 +51,7 @@ function PoolPanelBody({
   onSelect?: (round: TimelineRound) => void;
 }) {
   const clock = useChainClock();
-  const rounds = getTimelineRounds(block, clock.anchor);
+  const rounds = getTimelineRounds(block);
   const active =
     rounds.find((round) => round.status === "betting") ??
     rounds.find((round) => round.startBlock <= block && block < round.settleBlock) ??
@@ -366,8 +366,8 @@ function MyBetPanel({
           type="button"
           disabled={claiming}
           onClick={async () => {
-            if (!user?.address || !clock.anchor) return;
-            const roundIndex = (round.startBlock - clock.anchor) / 600;
+            if (!user?.address) return;
+            const roundIndex = round.startBlock / ROUND_INTERVAL_BLOCKS;
             setClaiming(true);
             try {
               await claimBet({

@@ -22,7 +22,7 @@ contract PoolMarketTest is Test {
     address internal bob = address(0xB0B);
     address internal carol = address(0xCA401);
 
-    uint256 internal constant ANCHOR = 1_000_000;
+    uint256 internal constant ANCHOR = 0;
     uint256 internal constant CAP = 1000 ether;
 
     uint8 internal constant UP = 0;
@@ -36,7 +36,7 @@ contract PoolMarketTest is Test {
         okbToken = new TikTapToken("OKB (mock)", "OKB", CAP);
         bemToken = new TikTapToken("BEM (mock)", "BEM", CAP);
 
-        market = new PoolMarket(operatorAddr, ANCHOR);
+        market = new PoolMarket(operatorAddr);
 
         vm.startPrank(operatorAddr);
         market.setMarket(MARKET_TEST, address(testToken), true);

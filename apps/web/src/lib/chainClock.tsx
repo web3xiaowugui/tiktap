@@ -31,8 +31,7 @@ interface ChainRound {
 interface ChainClockValue {
   /** 链上块高；两次轮询之间用本地时钟外推。 */
   block: number;
-  /** 合约 anchorBlock（第 0 轮起始块），拿不到链上数据时为 null。 */
-  anchor: number | null;
+
   currentRound: number | null;
   /** 当前轮的下注窗口是否还开着。 */
   bettingOpen: boolean;
@@ -92,7 +91,7 @@ export function ChainClockProvider({ children }: { children: ReactNode }) {
       const fallback = getBlockNumber(now);
       return {
         block: fallback,
-        anchor: null,
+
         currentRound: null,
         bettingOpen: true,
         blocksToClose: 0,
@@ -102,16 +101,15 @@ export function ChainClockProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    const anchor = sample.info.roundStartBlock - sample.info.currentRound * ROUND_INTERVAL_BLOCKS;
+
     const drift = Math.max(0, Math.floor((Date.now() - sample.at) / 1_000));
     const block = sample.info.blockNumber + drift;
-    const start = roundStartFor(block, anchor);
+    const start = roundStartFor(block);
     const blocksToClose = Math.max(0, start + ROUND_BETTING_BLOCKS - block);
 
     return {
       block,
-      anchor,
-      currentRound: Math.floor((block - anchor) / ROUND_INTERVAL_BLOCKS),
+      currentRound: Math.floor(block / ROUND_INTERVAL_BLOCKS),
       bettingOpen: blocksToClose > 0,
       blocksToClose,
       live: true,

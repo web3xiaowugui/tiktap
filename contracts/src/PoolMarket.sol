@@ -34,7 +34,7 @@ contract PoolMarket {
     /// 结算时传这个值表示本轮作废（全额退款）。
     uint8 public constant SIDE_VOID = 2;
 
-    uint256 public immutable anchorBlock;
+
     address public operator;
 
     struct Market {
@@ -106,21 +106,21 @@ contract PoolMarket {
         _;
     }
 
-    constructor(address operator_, uint256 anchorBlock_) {
+    constructor(address operator_) {
         if (operator_ == address(0)) revert ZeroAddress();
         operator = operator_;
-        anchorBlock = anchorBlock_;
+
     }
 
     // ---------------------------------------------------------------- 轮次
 
     /** 当前「下注轮」的编号（最新的一轮；它的前一轮还在封盘期里）。 */
     function currentRound() public view returns (uint256) {
-        return (block.number - anchorBlock) / ROUND_INTERVAL_BLOCKS;
+        return block.number / ROUND_INTERVAL_BLOCKS;
     }
 
     function roundStart(uint256 roundIndex) public view returns (uint256) {
-        return anchorBlock + roundIndex * ROUND_INTERVAL_BLOCKS;
+        return roundIndex * ROUND_INTERVAL_BLOCKS;
     }
 
     function roundEnd(uint256 roundIndex) public view returns (uint256) {

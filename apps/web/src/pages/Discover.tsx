@@ -55,7 +55,7 @@ export default function Discover() {
 
   const clock = useChainClock();
   const block = clock.block;
-  const rounds = getTimelineRounds(block, clock.anchor);
+  const rounds = getTimelineRounds(block);
   const active =
     rounds.find((round) => round.status === "betting") ??
     rounds.find((round) => round.startBlock <= block && block < round.settleBlock) ??

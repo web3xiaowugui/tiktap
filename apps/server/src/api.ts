@@ -14,7 +14,6 @@ import {
 } from "./settlement.ts";
 import { readConfig } from "./tx.ts";
 import {
-  anchorBlock,
   marketFor,
   readMyBet,
   readHoldings,
@@ -208,10 +207,8 @@ export function registerRoutes(router: Router, db: Db): void {
 
     if (cfg.market) {
       const row = marketFor(db, market, betToken);
-      const roundIndex = await roundIndexFor(cfg, roundStartBlock);
-      const anchor = await anchorBlock(cfg);
-      const pool = await readPool(db, cfg, row, roundIndex, anchor);
-      // readPool 返回里的 roundStartBlock 就是 anchor + roundIndex*600，与请求值一致。
+      const roundIndex = roundIndexFor(roundStartBlock);
+      const pool = await readPool(db, cfg, row, roundIndex);
       return { marketSymbol: market, betTokenSymbol: betToken, ...pool };
     }
 
@@ -240,7 +237,7 @@ export function registerRoutes(router: Router, db: Db): void {
 
     if (cfg.market && address) {
       const row = marketFor(db, market, betToken);
-      const roundIndex = await roundIndexFor(cfg, roundStartBlock);
+      const roundIndex = roundIndexFor(roundStartBlock);
       const myBet = await readMyBet(db, cfg, address, row, roundIndex);
       return {
         marketSymbol: market,

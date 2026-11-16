@@ -51,7 +51,7 @@ export function YourPositions({ withHeader = true }: { withHeader?: boolean }) {
 
   const rows = data ?? [];
   const block = clock.block;
-  const activeStartBlock = roundStartFor(block, clock.anchor);
+  const activeStartBlock = roundStartFor(block);
 
   // 持仓 only covers live rounds; settled bets have already paid out.
   const holdings = useMemo(

@@ -17,7 +17,7 @@ contract Deploy is Script {
         uint256 deployerKey = vm.envUint("PRIVATE_KEY");
         address operator = vm.envOr("OPERATOR_ADDRESS", vm.addr(deployerKey));
 
-        uint256 anchor = block.number;
+
         uint256 mintCap = vm.envOr("MINT_CAP", uint256(1000 ether));
 
         vm.startBroadcast(deployerKey);
@@ -27,11 +27,11 @@ contract Deploy is Script {
         TikTapToken okb = new TikTapToken("OKB (mock)", "OKB", mintCap);
         TikTapToken bem = new TikTapToken("BEM (mock)", "BEM", mintCap);
 
-        market = new PoolMarket(operator, anchor);
+        market = new PoolMarket(operator);
 
         vm.stopBroadcast();
 
-        console2.log("anchorBlock", anchor);
+
         console2.log("market", address(market));
         console2.log("operator", operator);
         console2.log("token TEST", address(testToken));
