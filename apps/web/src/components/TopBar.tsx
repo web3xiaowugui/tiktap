@@ -115,7 +115,7 @@ export function TopBar() {
                   label="个人主页"
                   onClick={() => {
                     setMenuOpen(false);
-                    navigate(`/u/${user?.handle ?? "end837"}`);
+                    navigate(`/u/${user?.address ?? user?.handle ?? "end837"}`);
                   }}
                 />
                 <MenuItem

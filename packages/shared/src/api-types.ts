@@ -214,6 +214,75 @@ export interface Badge {
   tone: "gold" | "green" | "purple" | "neutral";
 }
 
+/** 个人主页统计：按「地址 × 市场 × 轮次」从 bets 聚合，金额统一折成 USD。 */
+export interface ProfileStats {
+  /** 参与过的轮次数（市场 × 轮次去重）。 */
+  rounds: number;
+  /** 下注笔数。 */
+  bets: number;
+  /** 总下注额（USD）。 */
+  volumeUsd: number;
+  /** 已结算的累计盈亏（USD，未结算的不算）。 */
+  pnlUsd: number;
+  /** 胜率（0–100，按参与轮次算，净盈亏 > 0 记胜）。 */
+  winRate: number;
+  wonRounds: number;
+  lostRounds: number;
+  /** 已结算但不输不赢（双边对冲 / 单边退款后）。 */
+  drawRounds: number;
+  /** 已结算轮次总数（won + lost + draw，不含退款轮）。 */
+  settledRounds: number;
+  /** 还没结算的轮次。 */
+  openRounds: number;
+}
+
+export type ProfileRoundStatus = "open" | "settled" | "claimed" | "refunded";
+
+/** 个人主页的一条「参与轮次」汇总。 */
+export interface ProfileRound {
+  id: string;
+  symbol: string;
+  betToken: string;
+  roundId: number;
+  roundStartBlock: number;
+  /** 两边合计，带单位，例如 "15 TEST"。 */
+  amount: string;
+  longAmount?: string;
+  shortAmount?: string;
+  /** 只押了一边才有方向；两边都押是 null。 */
+  side: Side | null;
+  bets: number;
+  status: ProfileRoundStatus;
+  /** 本轮结算结果（涨/跌），未结算或退款是 null。 */
+  winner: Side | null;
+  /** 净盈亏 > 0 算赢；未结算/退款是 null。 */
+  won: boolean | null;
+  /** 实际收到（带单位），未结算为 null。 */
+  payout: string | null;
+  /** 带正负号，例如 "+2.5 TEST"。 */
+  pnl: string | null;
+  createdAt: number;
+  settledAt: number | null;
+}
+
+export type ProfileEventKind = "bet" | "settle" | "claim" | "opinion";
+
+/** 个人主页活动流的一条事件。 */
+export interface ProfileEvent {
+  id: string;
+  kind: ProfileEventKind;
+  symbol: string | null;
+  betToken: string | null;
+  roundId: number | null;
+  side: Side | null;
+  amount: string | null;
+  /** 观点正文（kind = opinion 时）。 */
+  body?: string | null;
+  time: string;
+  createdAt: number;
+  txHash?: string | null;
+}
+
 export interface Profile {
   handle: string;
   name: string;
@@ -229,6 +298,10 @@ export interface Profile {
   equityChange24h: number;
   equityChangePct: number;
   rank: number;
+  /** 托管地址（无链上记录 / mock 用户时为空）。 */
+  address?: string;
+  /** 真实下注统计。 */
+  stats?: ProfileStats;
 }
 
 export interface EquityPoint {

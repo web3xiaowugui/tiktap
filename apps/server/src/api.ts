@@ -25,6 +25,14 @@ import { getRoundPrice } from "./round-prices.ts";
 import { readMarketActivity } from "./activity.ts";
 import { readRoundHolders } from "./holders.ts";
 import { createOpinion, readOpinions, readOpinionsBySymbol } from "./opinions.ts";
+import {
+  findProfileUser,
+  readProfile,
+  readProfileEquity,
+  readProfileEvents,
+  readProfileOpenRounds,
+  readProfileRounds,
+} from "./profiles.ts";
 import { listBets } from "./bets.ts";
 import {
   marketFor,
@@ -35,7 +43,6 @@ import {
   roundIndexFor,
 } from "./read-chain.ts";
 import {
-  activityFor,
   BET_QUICK_AMOUNTS,
   BET_TOKENS,
   betPoolFor,
@@ -44,11 +51,9 @@ import {
 
   LEADERBOARD,
   makeCandles,
-  makeEquity,
 
   MY_HOLDINGS,
   myBetFor,
-  positionsFor,
   profileFor,
   SIDEBAR_MENU,
   TOKENS,
@@ -442,17 +447,35 @@ export function registerRoutes(router: Router, db: Db): void {
     return MY_HOLDINGS;
   });
 
-  // ---- 个人主页 ----
-  router.get("/api/profiles/:handle", ({ params }) => profileFor(params.handle));
-  router.get("/api/profiles/:handle/positions", ({ params }) => positionsFor(params.handle));
-  router.get("/api/profiles/:handle/activity", ({ params }) => activityFor(params.handle));
-
+  // ---- 个人主页（读库：bets / opinions / users）----
+  router.get("/api/profiles/:handle", ({ params }) => {
+    const user = findProfileUser(db, params.handle);
+    // 老 mock 交易者（排行榜/搜索里还没接库的 handle）退回 mock 身份，统计为空。
+    if (!user) return profileFor(params.handle);
+    return readProfile(db, user);
+  });
+  router.get("/api/profiles/:handle/positions", ({ params }) => {
+    const user = findProfileUser(db, params.handle);
+    return user ? readProfileOpenRounds(db, user.address) : [];
+  });
+  router.get("/api/profiles/:handle/rounds", ({ params, query }) => {
+    const user = findProfileUser(db, params.handle);
+    if (!user) return [];
+    const limit = Number(query.get("limit") ?? 100);
+    return readProfileRounds(db, user.address, Number.isFinite(limit) ? limit : 100);
+  });
+  router.get("/api/profiles/:handle/activity", ({ params, query }) => {
+    const user = findProfileUser(db, params.handle);
+    if (!user) return [];
+    const limit = Number(query.get("limit") ?? 100);
+    return readProfileEvents(db, user.address, Number.isFinite(limit) ? limit : 100);
+  });
   router.get("/api/profiles/:handle/equity", ({ params, query }) => {
     const raw = query.get("range") ?? "24h";
     const ranges: Range[] = ["24h", "7d", "30d"];
     if (!ranges.includes(raw as Range)) throw new HttpError(400, `未知区间：${raw}`);
-    profileFor(params.handle);
-    return makeEquity(raw as Range);
+    const user = findProfileUser(db, params.handle);
+    return user ? readProfileEquity(db, user.address, raw as Range) : [];
   });
 
   // ---- 登录 ----

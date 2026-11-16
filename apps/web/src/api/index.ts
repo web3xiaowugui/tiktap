@@ -1,5 +1,4 @@
 import type {
-  Activity,
   AuthUser,
   BetHolding,
   BetPool,
@@ -12,8 +11,9 @@ import type {
   MarketActivity,
   MarketOpinion,
   MyBet,
-  Position,
   Profile,
+  ProfileEvent,
+  ProfileRound,
   Range,
   SidebarMenu,
   Timeframe,
@@ -200,12 +200,24 @@ export async function getRoundPrice(symbol: string, roundStartBlock: number): Pr
   );
 }
 
-export async function getPositions(handle: string): Promise<Position[]> {
-  return request<Position[]>(`/profiles/${encodeURIComponent(handle)}/positions`);
+export async function getPositions(handle: string): Promise<ProfileRound[]> {
+  return request<ProfileRound[]>(`/profiles/${encodeURIComponent(handle)}/positions`);
 }
 
-export async function getActivity(handle: string): Promise<Activity[]> {
-  return request<Activity[]>(`/profiles/${encodeURIComponent(handle)}/activity`);
+/** 参与过的轮次（已结算 + 未结算，按时间倒序）。 */
+export async function getProfileRounds(
+  handle: string,
+  limit = 100,
+): Promise<ProfileRound[]> {
+  return request<ProfileRound[]>(
+    `/profiles/${encodeURIComponent(handle)}/rounds${query({ limit })}`,
+  );
+}
+
+export async function getActivity(handle: string, limit = 100): Promise<ProfileEvent[]> {
+  return request<ProfileEvent[]>(
+    `/profiles/${encodeURIComponent(handle)}/activity${query({ limit })}`,
+  );
 }
 
 export async function getEquityCurve(handle: string, range: Range): Promise<EquityPoint[]> {
