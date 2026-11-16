@@ -59,10 +59,10 @@ export function FaucetButton() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 rounded-md border border-line bg-panel px-2 py-1 text-[10.5px] font-medium text-muted2 transition hover:border-line2 hover:bg-panel2 hover:text-white"
+        className="flex items-center gap-1.5 rounded-md border border-line bg-panel px-2 py-1 text-[11px] font-bold text-white transition hover:border-line2 hover:bg-panel2"
         title={`领取 ${CLAIM_AMOUNT} ${symbol}`}
       >
-        <Coins className="h-3.5 w-3.5" />
+        <Coins className="h-3.5 w-3.5 text-white" />
         领测试币
       </button>
 
