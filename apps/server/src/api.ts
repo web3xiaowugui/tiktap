@@ -5,6 +5,15 @@ import { placeBet, mintForUser } from "./betting.ts";
 import { createUser } from "./users.ts";
 import { syncMarkets } from "./market-sync.ts";
 import {
+  claimForUser,
+  getRoundInfo,
+  priceWinner,
+  settleMarket,
+  settleRound,
+  winnerFromLabel,
+} from "./settlement.ts";
+import { readConfig } from "./tx.ts";
+import {
   activityFor,
   BET_QUICK_AMOUNTS,
   BET_TOKENS,
@@ -125,6 +134,57 @@ export function registerRoutes(router: Router, db: Db): void {
     });
   });
 
+  // ---- 轮次真值 ----
+  router.get("/api/round", async () => getRoundInfo(readConfig()));
+
+  // ---- 结算（单个市场 / 一整轮）----
+  router.post("/api/settle", async ({ req }) => {
+    const body = await readJson<{
+      market?: string;
+      betToken?: string;
+      roundIndex?: number;
+      winner?: string;
+    }>(req);
+    if (!body.market) throw new HttpError(400, "缺少 market");
+    if (!body.betToken) throw new HttpError(400, "缺少 betToken");
+
+    const row = findMarket(db, body.market.toUpperCase(), body.betToken.toUpperCase());
+    if (!row) throw new HttpError(404, `未知市场：${body.market}/${body.betToken}`);
+
+    const cfg = readConfig();
+    const roundIndex = body.roundIndex ?? (await defaultRound(cfg));
+    const winner = body.winner
+      ? winnerFromLabel(body.winner)
+      : (await priceWinner(cfg, row.symbol, roundIndex)).winner;
+
+    return settleMarket(db, cfg, row.market_id, roundIndex, winner);
+  });
+
+  router.post("/api/settle/round", async ({ req }) => {
+    const body = await readJson<{ roundIndex?: number; winners?: Record<string, string> }>(req);
+    const cfg = readConfig();
+    const roundIndex = body.roundIndex ?? (await defaultRound(cfg));
+    return settleRound(db, cfg, roundIndex, body.winners);
+  });
+
+  // ---- 领奖 ----
+  router.post("/api/claim", async ({ req }) => {
+    const body = await readJson<{
+      address?: string;
+      market?: string;
+      betToken?: string;
+      roundIndex?: number;
+    }>(req);
+    if (!body.address) throw new HttpError(400, "缺少 address");
+    if (!body.market) throw new HttpError(400, "缺少 market");
+    if (!body.betToken) throw new HttpError(400, "缺少 betToken");
+    if (body.roundIndex === undefined) throw new HttpError(400, "缺少 roundIndex");
+
+    const row = findMarket(db, body.market.toUpperCase(), body.betToken.toUpperCase());
+    if (!row) throw new HttpError(404, `未知市场：${body.market}/${body.betToken}`);
+
+    return claimForUser(db, readConfig(), body.address, row.market_id, body.roundIndex);
+  });
   // ---- 链上配置自检（人工触发一次即可）----
   router.post("/api/markets/sync", async () => syncMarkets(db));
   // ---- 市场（标的 × 下注代币）----
@@ -235,4 +295,10 @@ export function registerRoutes(router: Router, db: Db): void {
   });
 
   router.post("/api/auth/signout", () => ({ ok: true }));
+}
+/** 默认结算「上一轮」（当前轮的上一轮一定已经结束了）。 */
+async function defaultRound(cfg: ReturnType<typeof readConfig>): Promise<number> {
+  const info = await getRoundInfo(cfg);
+  if (info.currentRound === 0) throw new HttpError(400, "第 0 轮还没结束，没有可结算的轮次");
+  return info.currentRound - 1;
 }

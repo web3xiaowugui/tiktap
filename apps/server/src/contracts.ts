@@ -18,6 +18,7 @@ export const POOL_MARKET_ABI = parseAbi([
   "function stakeOf(uint8 marketId, uint256 roundIndex, address user) view returns (uint256 up, uint256 down)",
   "function previewClaim(uint8 marketId, uint256 roundIndex, address user) view returns (uint256)",
   "function isVoidRound(uint8 marketId, uint256 roundIndex) view returns (bool)",
+  "function claimed(uint256 roundIndex, uint8 marketId, address user) view returns (bool)",
 ]);
 
 export const ERC20_ABI = parseAbi([

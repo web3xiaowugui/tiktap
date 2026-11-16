@@ -73,6 +73,10 @@ curl http://127.0.0.1:8787/api/health
 | POST | `/api/faucet` | 用用户地址 `mint` 体验币（gas 由用户地址出） |
 | POST | `/api/bet` | 校验 → 首次补一次无限 `approve` → `bet(marketId, side, amount)` → txHash 落 `txs` → 查 receipt 回填 |
 | POST | `/api/markets/sync` | 按 `markets` 表把 `marketId → 代币地址` 同步到链上（幂等，配置不一致才发交易） |
+| GET | `/api/round` | 当前轮次、是否可下注、轮首/轮末区块、窗口剩余块数 |
+| POST | `/api/settle` | 结算单个市场（不传 `winner` 就按行情判涨跌） |
+| POST | `/api/settle/round` | 结算一整轮：每个标的判一次涨跌，只对真有下注的市场发交易 |
+| POST | `/api/claim` | 用户领奖（份额由合约计算） |
 
 ```bash
 POST /api/bet
@@ -80,6 +84,30 @@ POST /api/bet
 ```
 
 `side` 取 `long` / `short`；`amount` 是按代币单位（18 位小数）的字符串，后端用 `parseUnits` 转 wei。
+同一个地址的写操作串行排队（`withAddressLock`），并发请求不会撞 nonce。
+
+#### 结算怎么判涨跌
+
+一轮 = 600 块 ≈ 600 秒，所以拿「轮首那一分钟」和「轮末那一分钟」的两根 1m K 线比收盘价：
+
+```bash
+POST /api/settle/round
+{"roundIndex": 0}                        # 不给结果 → 后端起 OKX 1m K 线判涨跌
+{"roundIndex": 0, "winners": {"BTC": "long"}}   # 给结果 → 不查行情，直接按指定结果结算
+```
+
+- **同一标的的所有下注代币共用同一个涨跌结果**（BTC/BEM、BTC/OKB、BTC/TEST 一起结算），但每笔各自结算、各自派奖。
+- **只结算真有下注的市场**：两边都是 0 的市场发交易也是空转，直接跳过并回报原因。
+- **行情必须精确覆盖那两分钟**，缺一根就报错、绝不用过期 K 线凑数（避免「开盘=收盘」永远判涨）。本地 `anvil_mine` 快进会让链上时间跑到真实时间前面，这时请用显式 `winners`。
+- **单边池自动退款**：只有一边有人押，或显式传 `void`，合约按原额退回，不用 operator 额外处理。
+- **自动结算**：服务启动后每 3 秒检查「上一轮 / 上上轮」里还没结算且有下注的市场，自动判价并结算（`AUTO_SETTLE=0` 可关掉）。
+
+结算之后用户就能领：
+
+```bash
+POST /api/claim
+{"address":"0x…","market":"BTC","betToken":"TEST","roundIndex":0}
+```
 同一个地址的写操作串行排队（`withAddressLock`），并发请求不会撞 nonce。
 
 ### 合约
@@ -120,7 +148,7 @@ Foundry v1.9.0 已安装（`forge` / `cast` / `anvil` / `chisel` 在 `%USERPROFI
 
 见 `.env.example`。必须自己生成 `WALLET_ENC_KEY`（`openssl rand -hex 32`），它用于 AES-256-GCM 加密用户私钥。
 
-链上写操作还需要：`POOL_MARKET_ADDRESS` 与三个代币地址（`TEST_TOKEN_ADDRESS` / `OKB_TOKEN_ADDRESS` / `BEM_TOKEN_ADDRESS`，`pnpm contracts:deploy` 会打印）、`OPERATOR_PKEY`（只用于 `setAllowed` / `setMarket` / `settle`，不碰用户的钱）。本地演示可设 `GAS_TOPUP_WEI` 给新地址打 gas，主网应留空。
+链上写操作还需要：`POOL_MARKET_ADDRESS` 与三个代币地址（`TEST_TOKEN_ADDRESS` / `OKB_TOKEN_ADDRESS` / `BEM_TOKEN_ADDRESS`，`pnpm contracts:deploy` 会打印）、`OPERATOR_PKEY`（只用于 `setAllowed` / `setMarket` / `settle`，不碰用户的钱）。本地演示可设 `GAS_TOPUP_WEI` 给新地址打 gas，主网应留空。自动结算默认开启，设 `AUTO_SETTLE=0` 关闭（本地用 `anvil_mine` 快进时建议关掉，改用 `/api/settle/round` 显式指定结果）。
 
 ## 说明
 

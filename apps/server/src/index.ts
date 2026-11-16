@@ -5,6 +5,7 @@ import { syncMarkets } from "./market-sync.ts";
 import { Router, startServer } from "./http.ts";
 import { publicClient, RPC_URL, tryGetBlockNumber } from "./chain.ts";
 import { readConfig } from "./tx.ts";
+import { startAutoSettler } from "./settlement.ts";
 
 const db = openDb();
 seedMarkets(db);
@@ -47,6 +48,10 @@ router.get("/api/health", async () => {
 });
 
 registerRoutes(router, db);
+
+if (cfg.market && process.env.AUTO_SETTLE !== "0") {
+  startAutoSettler(db, cfg);
+}
 
 const port = Number(process.env.PORT ?? 8787);
 startServer(router, port);
