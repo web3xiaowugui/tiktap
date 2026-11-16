@@ -111,9 +111,11 @@ function PoolDetails({
   return (
     <>
       <div
-        className="mt-5 grid divide-x divide-line overflow-hidden rounded-t-lg border border-line bg-panel2/20"
+        className="mt-5 grid shrink-0 divide-x divide-line overflow-hidden rounded-t-lg border border-line bg-panel2/20"
         style={{
-          gridTemplateColumns: `minmax(68px, ${longShare}fr) minmax(68px, ${shortShare}fr) minmax(96px, 24%)`,
+          // 两侧按金额分宽度（没交易时各占一半），右边总池只占内容宽。
+          // 用金额当 fr：0fr 会把两格压到最小、剩下的空白糊在右边，看起来就像右边那格吞掉了一大块。
+          gridTemplateColumns: `minmax(72px, ${total > 0 ? pool.longAmount : 1}fr) minmax(72px, ${total > 0 ? pool.shortAmount : 1}fr) 88px`,
         }}
       >
         <PoolStat
@@ -456,14 +458,12 @@ function PoolStat({
               <>
                 预计 <span className="text-white">{payout.toFixed(2)}x</span>
               </>
-            ) : (
-              "等待对手"
-            )}
+            ) : null}
           </div>
         )}
       </div>
 
-      {isSide && share !== undefined && (
+      {isSide && share !== undefined && share > 0 && (
         <div
           className={cn(
             "flex h-5 shrink-0 items-center justify-center",
