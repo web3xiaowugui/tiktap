@@ -16,7 +16,9 @@ import {
   postOpinion,
   getRoundPrice,
   getToken,
+  LIVE_TIMEFRAME_LABEL,
 } from "@/api";
+import type { LiveTimeframe } from "@/api";
 import type {
   FeedItem,
   Holder,
@@ -58,6 +60,12 @@ const DEFAULT_OPINION_SPLIT_RATIO = 0.62;
 const MIN_OPINION_SPLIT_RATIO = 0.25;
 const MAX_OPINION_SPLIT_RATIO = 0.75;
 
+const LIVE_TIMEFRAMES: Array<{ id: LiveTimeframe; label: string }> = [
+  { id: "15s", label: "15秒" },
+  { id: "30s", label: "30秒" },
+  { id: "1m", label: "1分" },
+];
+
 export default function Discover() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -92,7 +100,8 @@ export default function Discover() {
   );
 
   const tokenState = useApi(() => getToken(symbol), [symbol]);
-  const candlesState = useLiveCandles(symbol);
+  const [timeframe, setTimeframe] = useState<LiveTimeframe>("1m");
+  const candlesState = useLiveCandles(symbol, timeframe);
   const holdersState = useApi(
     () => getHolders(symbol, betToken?.symbol ?? "TEST", selected.startBlock),
     [symbol, betToken?.symbol, selected.startBlock],
@@ -198,11 +207,26 @@ export default function Discover() {
           <TokenHeader token={tokenState.data} />
 
           <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line px-2">
-            <span className="shrink-0 rounded bg-panel2 px-2.5 py-1.5 text-[12px] font-medium text-white">
-              1分
-            </span>
+            <div className="flex items-center gap-0.5 rounded bg-panel p-0.5">
+              {LIVE_TIMEFRAMES.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setTimeframe(item.id)}
+                  aria-pressed={timeframe === item.id}
+                  className={cn(
+                    "rounded px-2.5 py-1 text-[12px] font-medium transition",
+                    timeframe === item.id
+                      ? "bg-panel2 text-white"
+                      : "text-muted2 hover:text-white",
+                  )}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
             <span className="hidden shrink-0 text-[10px] text-muted2 sm:block">
-              OKX · 仅 1m
+              OKX · 实时
             </span>
           </div>
 
@@ -210,11 +234,13 @@ export default function Discover() {
             {candlesState.loading ? (
               <div className="flex h-full items-center justify-center gap-2 text-[12px] text-muted2">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
-                正在加载 OKX 1m K 线…
+                正在加载 OKX {LIVE_TIMEFRAME_LABEL[timeframe]} K 线…
               </div>
             ) : candlesState.error ? (
               <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-                <p className="text-[13px] text-white">1 分钟行情加载失败</p>
+                <p className="text-[13px] text-white">
+                  {LIVE_TIMEFRAME_LABEL[timeframe]} K 线加载失败
+                </p>
                 <p className="max-w-[320px] text-[11px] text-muted2">{candlesState.error}</p>
                 <button
                   type="button"
@@ -228,6 +254,7 @@ export default function Discover() {
               <CandleChart
                 candles={candlesState.data ?? []}
                 symbol={symbol}
+                timeframe={timeframe}
                 lockPrice={roundPriceState.data?.lockPrice ?? null}
                 settlePrice={roundPriceState.data?.settlePrice ?? null}
               />

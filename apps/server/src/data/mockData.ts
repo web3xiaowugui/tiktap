@@ -336,6 +336,8 @@ export const TOKENS: Token[] = [
 ];
 
 const TIMEFRAME_MS: Record<Timeframe, number> = {
+  "15s": 15_000,
+  "30s": 30_000,
   "1m": 60_000,
   "5m": 300_000,
   "15m": 900_000,
@@ -375,7 +377,17 @@ export function makeCandles(token: Token, timeframe: Timeframe, count = 110): Ca
   const step = TIMEFRAME_MS[timeframe];
   const startTime = Math.floor(Date.now() / step) * step - (count - 1) * step;
   const volatility =
-    timeframe === "1d" ? 0.018 : timeframe === "4h" ? 0.011 : timeframe === "1h" ? 0.006 : 0.0028;
+    timeframe === "1d"
+      ? 0.018
+      : timeframe === "4h"
+        ? 0.011
+        : timeframe === "1h"
+          ? 0.006
+          : timeframe === "15s"
+            ? 0.0006
+            : timeframe === "30s"
+              ? 0.001
+              : 0.0028;
   const drift = (token.change24h / 100 / count) * 1.6;
   let previous = token.price * (1 - token.change24h / 100);
   const candles: Candle[] = [];

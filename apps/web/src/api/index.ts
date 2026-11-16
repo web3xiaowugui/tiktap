@@ -336,5 +336,5 @@ export async function signOut(): Promise<void> {
  * Live TradingView chart data：客户端直连 OKX 公共接口。
  * 免费额度按用户 IP 分摊，不压我们的服务器，也不需要在服务端存 K 线。
  */
-export { getLiveCandles } from "./liveMarket";
+export { getLiveCandles, LIVE_TIMEFRAME_LABEL } from "./liveMarket";
 export type { LiveTimeframe } from "./liveMarket";

@@ -67,13 +67,25 @@ const clockFormatter = new Intl.DateTimeFormat("zh-CN", {
   hour12: false,
 });
 
+const clockSecondsFormatter = new Intl.DateTimeFormat("zh-CN", {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
 const dayFormatter = new Intl.DateTimeFormat("zh-CN", {
   month: "2-digit",
   day: "2-digit",
 });
 
+const SUB_MINUTE_TIMEFRAMES = new Set(["1s", "5s", "15s", "30s"]);
+
 export function fmtCandleTime(ts: number, timeframe: string): string {
-  return timeframe === "1d" ? dayFormatter.format(ts) : clockFormatter.format(ts);
+  if (timeframe === "1d") return dayFormatter.format(ts);
+  return SUB_MINUTE_TIMEFRAMES.has(timeframe)
+    ? clockSecondsFormatter.format(ts)
+    : clockFormatter.format(ts);
 }
 
 export function fmtClock(ts: number): string {
@@ -99,8 +111,18 @@ const tooltipTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
   hour12: false,
 });
 
-export function fmtTooltipTime(ts: number): string {
-  return tooltipTimeFormatter.format(ts);
+const tooltipSecondsFormatter = new Intl.DateTimeFormat("zh-CN", {
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
+/** 秒级周期（15s / 30s）的 tooltip 需要带上秒。 */
+export function fmtTooltipTime(ts: number, withSeconds = false): string {
+  return (withSeconds ? tooltipSecondsFormatter : tooltipTimeFormatter).format(ts);
 }
 
 const equityTimeFormatter = new Intl.DateTimeFormat("zh-CN", {

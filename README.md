@@ -52,7 +52,7 @@ curl http://127.0.0.1:8787/api/health
 | GET | `/api/my-bet?market&token&round&address` | 我在本轮的仓位、可领金额（配了合约读链上 `stakeOf`/`previewClaim`） |
 | GET | `/api/wallet/:address` | 原生币 + 三个下注代币的真实余额 |
 | GET/PUT | `/api/quick-amounts/:symbol` | 5 个快捷金额（存 SQLite） |
-| GET | `/api/candles?symbol&timeframe` | 预算好的 K 线（确定性生成；1m 实时行情由前端直连 OKX，见下） |
+| GET | `/api/candles?symbol&timeframe` | 预算好的 K 线（确定性生成；15s / 30s / 1m 实时行情由前端直连 OKX，见下） |
 | GET | `/api/holders` `feed` `activity` | 持有人 / 动态 / 成交（按 symbol+round） |
 | GET | `/api/holdings?address` | 我的持仓（配了合约只返回当前轮 + 上一轮还没开奖的仓位） |
 | GET | `/api/profiles/:handle` | 个人主页资料（handle 支持托管地址或 X handle）；统计从 `bets` 现算 |
@@ -68,7 +68,7 @@ curl http://127.0.0.1:8787/api/health
 
 模拟数据在后端 `apps/server/src/data/mockData.ts`（原前端文件整体搬入），要改数值只改这一处。
 
-**K 线是例外**：1m 实时行情由浏览器直连 OKX 公共接口（`apps/web/src/api/liveMarket.ts`）。免费额度按用户 IP 分摊，服务端既不吃额度也不需要存 K 线；`/api/candles` 只提供确定性生成的演示数据。
+**K 线是例外**：15s / 30s / 1m 实时行情由浏览器直连 OKX 公共接口（`apps/web/src/api/liveMarket.ts`），OKX 的 `bar` 直接支持这三个周期。免费额度按用户 IP 分摊，服务端既不吃额度也不需要存 K 线；`/api/candles` 只提供确定性生成的演示数据。
 
 登录态仍存在浏览器 localStorage（前端会话，不含敏感信息）。
 
@@ -178,7 +178,7 @@ Foundry v1.9.0 已安装（`forge` / `cast` / `anvil` / `chisel` 在 `%USERPROFI
 
 ## 前端（apps/web）
 
-营销首页 + 交易终端（发现 / 个人主页）。K 线用 TradingView Lightweight Charts，1 分钟行情来自 OKX 公共接口；其余数据来自 `src/api` 门面（目前仍是 mock，切后端时只替换这一层的实现）。
+营销首页 + 交易终端（发现 / 个人主页）。K 线用 TradingView Lightweight Charts，支持 15 秒 / 30 秒 / 1 分钟，行情来自 OKX 公共接口；其余数据来自 `src/api` 门面（目前仍是 mock，切后端时只替换这一层的实现）。
 
 | 路由 | 内容 |
 | --- | --- |

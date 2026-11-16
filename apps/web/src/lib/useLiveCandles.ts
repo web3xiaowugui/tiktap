@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getLiveCandles } from "@/api";
+import type { LiveTimeframe } from "@/api";
 import type { Candle } from "@/api/types";
 
 interface LiveCandlesState {
@@ -12,10 +13,13 @@ interface LiveCandlesState {
 const REFRESH_MS = 15_000;
 
 /**
- * Loads 1m candles from the free OKX public API and refreshes them in place.
+ * Loads 15s / 30s / 1m candles from the free OKX public API and refreshes them in place.
  * A failed background refresh keeps the last good snapshot on screen.
  */
-export function useLiveCandles(symbol: string): LiveCandlesState {
+export function useLiveCandles(
+  symbol: string,
+  timeframe: LiveTimeframe = "1m",
+): LiveCandlesState {
   const [data, setData] = useState<Candle[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +40,7 @@ export function useLiveCandles(symbol: string): LiveCandlesState {
       if (inFlight) return;
       inFlight = true;
       try {
-        const next = await getLiveCandles(symbol, "1m");
+        const next = await getLiveCandles(symbol, timeframe);
         if (!alive) return;
         hasDataRef.current = true;
         setData(next);
@@ -59,7 +63,7 @@ export function useLiveCandles(symbol: string): LiveCandlesState {
       alive = false;
       window.clearInterval(timer);
     };
-  }, [symbol, nonce]);
+  }, [symbol, timeframe, nonce]);
 
   return {
     data,

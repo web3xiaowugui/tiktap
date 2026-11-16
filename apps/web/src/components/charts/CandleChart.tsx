@@ -15,11 +15,13 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import type { Candle } from "@/api/types";
+import { LIVE_TIMEFRAME_LABEL, type LiveTimeframe } from "@/api";
 import { fmtCandleTime, fmtPct, fmtPrice, fmtTooltipTime } from "@/lib/format";
 
 interface CandleChartProps {
   candles: Candle[];
   symbol: string;
+  timeframe: LiveTimeframe;
   /** 当前选中轮次的锁定价格，画一条水平线。null/undefined 就不画。 */
   lockPrice?: number | null;
   /** 已开奖轮次的开奖价格，画另一条线。 */
@@ -45,9 +47,13 @@ const AXIS = "#6a6a77";
 
 const toChartTime = (time: number) => Math.floor(time / 1000) as UTCTimestamp;
 
+const SECOND_TIMEFRAMES = new Set<LiveTimeframe>(["15s", "30s"]);
+const hasSeconds = (timeframe: LiveTimeframe) => SECOND_TIMEFRAMES.has(timeframe);
+
 export function CandleChart({
   candles,
   symbol,
+  timeframe,
   lockPrice,
   settlePrice,
   className,
@@ -59,6 +65,8 @@ export function CandleChart({
   const lockLineRef = useRef<IPriceLine | null>(null);
   const settleLineRef = useRef<IPriceLine | null>(null);
   const fittedRef = useRef(false);
+  const timeframeRef = useRef(timeframe);
+  timeframeRef.current = timeframe;
   const [hover, setHover] = useState<HoverState | null>(null);
 
   useEffect(() => {
@@ -86,14 +94,14 @@ export function CandleChart({
       timeScale: {
         borderVisible: false,
         timeVisible: true,
-        secondsVisible: false,
+        secondsVisible: hasSeconds(timeframe),
         // 右侧留出 30 根 K 线的空白，价格线标签（锁定价格 / 开奖价格）不会压到 K 线
         rightOffset: 30,
         barSpacing: 6,
         minBarSpacing: 2,
         tickMarkFormatter: (time: Time) => {
           if (typeof time !== "number") return "";
-          return fmtCandleTime(time * 1000, "1m");
+          return fmtCandleTime(time * 1000, timeframeRef.current);
         },
       },
       crosshair: {
@@ -115,7 +123,7 @@ export function CandleChart({
         priceFormatter: (price: number) => fmtPrice(price),
         timeFormatter: (time: Time) => {
           if (typeof time !== "number") return "";
-          return fmtTooltipTime(time * 1000);
+          return fmtTooltipTime(time * 1000, hasSeconds(timeframeRef.current));
         },
       },
     });
@@ -186,6 +194,13 @@ export function CandleChart({
       fittedRef.current = false;
     };
   }, []);
+
+  /** 切到 15s / 30s 时把时间轴秒数打开，切回 1m 再关掉。 */
+  useEffect(() => {
+    chartRef.current?.timeScale().applyOptions({
+      secondsVisible: hasSeconds(timeframe),
+    });
+  }, [timeframe]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -304,7 +319,7 @@ export function CandleChart({
 
       {candles.length === 0 && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-[12px] text-muted2">
-          暂无 1m K 线数据
+          暂无 {LIVE_TIMEFRAME_LABEL[timeframe]} K 线数据
         </div>
       )}
 
@@ -314,7 +329,7 @@ export function CandleChart({
           style={{ left: hover.left, top: hover.top }}
         >
           <div className="mb-1.5 flex items-center justify-between gap-2 text-[9px] text-muted2">
-            <span>{fmtTooltipTime(hover.time)}</span>
+            <span>{fmtTooltipTime(hover.time, hasSeconds(timeframe))}</span>
             <span>{symbol}</span>
           </div>
           <TooltipRow label="开" value={fmtPrice(hover.open)} />

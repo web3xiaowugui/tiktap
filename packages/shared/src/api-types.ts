@@ -30,7 +30,7 @@ export interface SidebarMenu {
 
 export type MarketKind = "spot" | "perp";
 
-export type Timeframe = "1m" | "5m" | "15m" | "1h" | "4h" | "1d";
+export type Timeframe = "15s" | "30s" | "1m" | "5m" | "15m" | "1h" | "4h" | "1d";
 
 export type Range = "24h" | "7d" | "30d";
 
