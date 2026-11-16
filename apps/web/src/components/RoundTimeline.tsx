@@ -22,14 +22,14 @@ const STATUS: Record<
   waiting: {
     label: "待开奖",
     bar: "border-[#f5a623]/30 bg-[#f5a623]/10",
-    title: "text-[#f5a623]/70",
-    text: "text-[#f5a623]",
+    title: "text-white",
+    text: "text-white",
   },
   betting: {
     label: "下注中",
     bar: "border-brand/40 bg-brand/20",
-    title: "text-muted",
-    text: "text-[#d3caff]",
+    title: "text-white",
+    text: "text-white",
   },
   upcoming: {
     label: "未开始",
