@@ -49,6 +49,8 @@ export function TradePanel() {
       setAmount("");
       setPercent(0);
       reloadBalances();
+      // 让发现页的活动列表立刻拉一次（市场级活动流）
+      window.dispatchEvent(new Event("tiktap:activity-refresh"));
       clock.refresh();
     } catch (error) {
       push(error instanceof Error ? error.message : "下注失败", "error");

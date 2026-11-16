@@ -1,4 +1,4 @@
-import { type DependencyList, useEffect, useState } from "react";
+import { type DependencyList, useCallback, useEffect, useState } from "react";
 
 interface ApiState<T> {
   data: T | null;
@@ -42,5 +42,7 @@ export function useApi<T>(loader: () => Promise<T>, deps: DependencyList) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, nonce]);
 
-  return { ...state, reload: () => setNonce((n) => n + 1) };
+  const reload = useCallback(() => setNonce((n) => n + 1), []);
+
+  return { ...state, reload };
 }

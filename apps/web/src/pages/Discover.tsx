@@ -95,6 +95,18 @@ export default function Discover() {
     () => getMarketActivity(symbol, betToken?.symbol ?? "TEST", selected.startBlock),
     [symbol, betToken?.symbol, selected.startBlock],
   );
+  const reloadActivity = activityState.reload;
+
+  /** 下注成功后立刻刷新；结算/自动代领在后台发生，再每 5s 拉一次。 */
+  useEffect(() => {
+    const refresh = () => reloadActivity();
+    window.addEventListener("tiktap:activity-refresh", refresh);
+    const timer = window.setInterval(refresh, 5_000);
+    return () => {
+      window.removeEventListener("tiktap:activity-refresh", refresh);
+      window.clearInterval(timer);
+    };
+  }, [reloadActivity]);
   const layoutRef = useRef<HTMLDivElement>(null);
   const [bottomHeight, setBottomHeight] = useState(DEFAULT_BOTTOM_HEIGHT);
   const [maxBottomHeight, setMaxBottomHeight] = useState(MAX_BOTTOM_HEIGHT);
