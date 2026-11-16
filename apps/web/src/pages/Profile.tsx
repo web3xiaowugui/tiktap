@@ -70,7 +70,7 @@ export default function Profile() {
 
   return (
     <div className="h-full min-h-0 overflow-y-auto">
-      <div className="px-3 py-3">
+      <div className="px-3 pb-3 pt-4">
         <ProfileHeader profile={profileState.data} />
 
         <StatsRow stats={stats} />
@@ -115,7 +115,10 @@ function ProfileHeader({ profile }: { profile: ProfileType }) {
 
   return (
     <section>
-      <div className="relative -mx-3 -mt-3 h-[76px] overflow-hidden border-b border-white/[0.04] bg-[#0c0c11]">
+      <div
+        data-testid="profile-banner"
+        className="relative -mx-3 h-[76px] overflow-hidden border-b border-white/[0.04] bg-[#0c0c11]"
+      >
         <div
           className="absolute inset-0"
           style={{
@@ -135,9 +138,12 @@ function ProfileHeader({ profile }: { profile: ProfileType }) {
         <div className="absolute left-1/3 top-0 h-px w-1/2 bg-gradient-to-r from-transparent via-white/15 to-transparent" />
       </div>
 
-      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3 px-1">
+      <div className="relative z-10 flex flex-wrap items-end justify-between gap-x-4 gap-y-3 px-1">
         <div className="flex min-w-0 items-end gap-3">
-          <div className="-mt-7 rounded-full bg-ink p-[3px] shadow-[0_8px_30px_rgba(0,0,0,0.5)]">
+          <div
+            data-testid="profile-avatar"
+            className="relative z-10 -mt-7 rounded-full bg-ink p-[3px] shadow-[0_8px_30px_rgba(0,0,0,0.5)]"
+          >
             <Avatar name={profile.name} gradient={profile.avatar} size={58} />
           </div>
           <div className="min-w-0 pb-0.5">
@@ -672,8 +678,8 @@ function ActivityCard({
 
 function ProfileSkeleton() {
   return (
-    <div className="h-full overflow-hidden p-3">
-      <div className="skeleton -mx-3 -mt-3 h-[72px]" />
+    <div className="h-full overflow-hidden px-3 pb-3 pt-4">
+      <div className="skeleton -mx-3 h-[72px]" />
       <div className="mt-2 flex items-center gap-3">
         <div className="skeleton -mt-7 h-14 w-14 rounded-full" />
         <div className="space-y-1.5">
