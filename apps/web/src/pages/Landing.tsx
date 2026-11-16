@@ -96,20 +96,6 @@ function LandingNav({
         </nav>
 
         <div className="ml-auto flex items-center gap-2.5">
-          <div className="hidden items-center gap-2 md:flex">
-            <StoreBadge
-              mark={<AppleMark className="h-4 w-4 text-white" />}
-              top="Download on the"
-              bottom="App Store"
-              onClick={() => onToast("演示项目仅包含网页版，移动端未包含")}
-            />
-            <StoreBadge
-              mark={<PlayMark className="h-[18px] w-[18px]" />}
-              top="GET IT ON"
-              bottom="Google Play"
-              onClick={() => onToast("演示项目仅包含网页版，移动端未包含")}
-            />
-          </div>
 
           {user ? (
             <button
