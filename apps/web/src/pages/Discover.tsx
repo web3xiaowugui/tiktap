@@ -8,7 +8,7 @@ import {
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Info } from "lucide-react";
 import {
-  getBetPoolSnapshot,
+  getBetPool,
   getFeed,
   getHolders,
   getMarketActivity,
@@ -64,11 +64,11 @@ export default function Discover() {
   const selected =
     rounds.find((round) => round.startBlock === selectedStartBlock) ?? active;
   const { selected: betToken } = useBetToken();
-  const selectedPool = useMemo(
+  const selectedPoolState = useApi(
     () =>
       betToken
-        ? getBetPoolSnapshot(symbol, betToken.symbol, selected.startBlock)
-        : null,
+        ? getBetPool(symbol, betToken.symbol, selected.startBlock)
+        : Promise.resolve(null),
     [symbol, betToken, selected.startBlock],
   );
 
@@ -273,7 +273,7 @@ export default function Discover() {
             loading={holdersState.loading}
             roundNumber={selected.number}
             settled={selected.status === "settled"}
-            winner={selectedPool?.winner}
+            winner={selectedPoolState.data?.winner}
           />
         </div>
       </section>

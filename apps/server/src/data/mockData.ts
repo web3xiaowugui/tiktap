@@ -17,7 +17,7 @@ import type {
   Timeframe,
   Token,
   TokenIcon,
-} from "./types";
+} from "../../../../packages/shared/src/api-types.ts";
 
 /* -------------------------------------------------------------------------- */
 /*  Icons — stylised stand-ins for the real token marks                        */

@@ -20,6 +20,16 @@ interface Route {
   handler: Handler;
 }
 
+/** 带状态码的业务错误，由 startServer 转成 JSON 响应。 */
+export class HttpError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
 export class Router {
   private routes: Route[] = [];
 
@@ -37,6 +47,10 @@ export class Router {
 
   post(path: string, handler: Handler): void {
     this.add("POST", path, handler);
+  }
+
+  put(path: string, handler: Handler): void {
+    this.add("PUT", path, handler);
   }
 
   match(
@@ -60,6 +74,18 @@ export class Router {
       if (ok) return { handler: route.handler, params };
     }
     return null;
+  }
+}
+
+export async function readJson<T>(req: IncomingMessage): Promise<T> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(chunk as Buffer);
+  const raw = Buffer.concat(chunks).toString("utf8").trim();
+  if (!raw) return {} as T;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    throw new HttpError(400, "请求体不是合法 JSON");
   }
 }
 
@@ -91,9 +117,15 @@ export function startServer(router: Router, port: number, host = "127.0.0.1"): v
       });
       if (result !== undefined) sendJson(res, 200, result);
     } catch (error) {
+      const status = error instanceof HttpError ? error.status : 500;
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[api] ${req.method} ${url.pathname} failed:`, message);
-      if (!res.headersSent) sendJson(res, 500, { error: "internal", message });
+      if (status >= 500) console.error(`[api] ${req.method} ${url.pathname} failed:`, message);
+      if (!res.headersSent) {
+        sendJson(res, status, {
+          error: status >= 500 ? "internal" : "bad_request",
+          message,
+        });
+      }
     }
   });
 

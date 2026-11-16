@@ -34,7 +34,32 @@ curl http://127.0.0.1:8787/api/health
 - 运行时：Node 26 直接用类型剥离跑 `.ts`，**没有编译步骤**
 - 数据库：`node:sqlite`，单文件 `data/tiktap.db`，schema 在 `apps/server/schema.sql`（启动时幂等应用）
 - 链交互：`viem`（唯一运行时依赖）
-- 表结构：`users`（地址 + 加密私钥）、`txs`（txHash 唯一键、pending/confirmed/failed）、`pools`、`rounds`
+- 表结构：`users`（地址 + 加密私钥）、`txs`（txHash 唯一键、pending/confirmed/failed）、`pools`、`rounds`、`quick_amounts`
+
+#### 接口一览
+
+前端只调这些（`apps/web/src/api/index.ts` 是唯一的调用点）：
+
+| 方法 | 路径 | 返回 |
+| --- | --- | --- |
+| GET | `/api/health` | 服务状态、用户数、当前区块 |
+| GET | `/api/tokens` / `/api/tokens/:symbol` | 交易对列表 / 单个 |
+| GET | `/api/bet-tokens` | 下注代币（OKB / BEM） |
+| GET | `/api/sidebar-menu` | 侧栏一级 Tab 与二级分类 |
+| GET | `/api/leaderboard` | 排行榜 |
+| GET | `/api/pools?market&token&round` | 涨/跌池、人数、获胜方 |
+| GET | `/api/my-bet?market&token&round` | 我在本轮的仓位（可为 `null`） |
+| GET/PUT | `/api/quick-amounts/:symbol` | 5 个快捷金额（存 SQLite） |
+| GET | `/api/candles?symbol&timeframe` | 预算好的 K 线（确定性生成） |
+| GET | `/api/live-candles?symbol&timeframe&limit` | 后端代理 OKX 公共 1m 行情 |
+| GET | `/api/holders` `feed` `activity` | 持有人 / 动态 / 成交（按 symbol+round） |
+| GET | `/api/holdings` | 我的持仓 |
+| GET | `/api/profiles/:handle` `+ /positions` `+ /activity` | 个人主页三块 |
+| GET | `/api/profiles/:handle/equity?range=24h\|7d\|30d` | 组合曲线 |
+| POST | `/api/auth/demo` `/api/auth/okx` `/api/auth/signout` | 登录 / 登出 |
+
+模拟数据在后端 `apps/server/src/data/mockData.ts`（原前端文件整体搬入），要改数值只改这一处。
+登录态仍存在浏览器 localStorage（前端会话，不含敏感信息）；链上写操作（下注 / 领取）这一版还没有接口，等合约和托管钱包接通后再加。
 
 ### 合约
 

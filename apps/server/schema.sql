@@ -53,3 +53,10 @@ CREATE TABLE IF NOT EXISTS rounds (
   settled_at   INTEGER,
   PRIMARY KEY (market_id, round_id)
 );
+
+-- 快捷金额（原本存在浏览器 localStorage，现在由后端保存）
+CREATE TABLE IF NOT EXISTS quick_amounts (
+  symbol     TEXT PRIMARY KEY,
+  amounts    TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
