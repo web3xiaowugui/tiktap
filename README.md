@@ -72,7 +72,7 @@ curl http://127.0.0.1:8787/api/health
 
 1. 在 https://developer.x.com 建 OAuth 2.0 应用，Client type 选 Web App / Native App，回调地址填 `http://127.0.0.1:8787/api/auth/x/callback`；
 2. `.env` 填 `X_CLIENT_ID`、`X_CLIENT_SECRET`（公开客户端可不填 Secret）、`PUBLIC_BASE_URL`、`WEB_BASE_URL`；
-3. 前端点「使用 X 账号登录」→ `GET /api/auth/x/start` → 跳 X 授权 → 回调换 token 取 `users/me` → 302 回 `WEB_BASE_URL/?x_ticket=…` → `POST /api/auth/x/session` 换资料 → 走托管建号。
+3. 前端点「使用 X 账号登录」→ `GET /api/auth/x/start` → 跳 X 授权 → 回调换 token 取 `users/me` → 302 回 `WEB_BASE_URL/?x_ticket=…` → `POST /api/auth/x/session` 换资料 → 走托管建号；`users.x_user_id` 存 X 数字 id，同一个 id 永远复用同一个托管地址（改 handle 不影响）。
 
 没配置 `X_CLIENT_ID` 时该接口返回 503 并说明缺什么；授权失败会带 `?x_error=` 回来提示。
 

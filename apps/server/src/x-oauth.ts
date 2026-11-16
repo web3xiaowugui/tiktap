@@ -25,6 +25,7 @@ interface PendingLogin {
 
 /** 回调成功后给前端的一次性票据。 */
 export interface XTicketPayload {
+  xId: string;
   handle: string;
   name: string;
   createdAt: number;
@@ -143,7 +144,7 @@ export async function exchangeXCode(
     throw new HttpError(502, `X 换取 token 失败（${tokenRes.status}）：${reason}`);
   }
 
-  const meRes = await fetch(`${ME_URL}?user.fields=username,name`, {
+  const meRes = await fetch(ME_URL, {
     headers: { Authorization: `Bearer ${token.access_token}` },
   });
   if (!meRes.ok) {
@@ -155,9 +156,12 @@ export async function exchangeXCode(
   };
   const username = me.data?.username;
   if (!username) throw new HttpError(502, "X 没有返回用户名");
+  const xId = me.data?.id?.trim();
+  if (!xId) throw new HttpError(502, "X 没有返回用户 id");
 
   const ticket = randomBytes(24).toString("hex");
   tickets.set(ticket, {
+    xId,
     handle: username.toLowerCase(),
     name: me.data?.name?.trim() || username,
     createdAt: Date.now(),
@@ -167,12 +171,14 @@ export async function exchangeXCode(
 }
 
 /** 前端拿票换资料；票据一次性、5 分钟内有效。 */
-export function consumeXTicket(ticket: string): { handle: string; name: string } {
+export function consumeXTicket(
+  ticket: string,
+): { xId: string; handle: string; name: string } {
   const entry = tickets.get(ticket);
   if (!entry) throw new HttpError(400, "X 登录票据无效或已使用，请重新登录。");
   tickets.delete(ticket);
   if (Date.now() - entry.createdAt > TICKET_TTL_MS) {
     throw new HttpError(400, "X 登录票据已过期，请重新登录。");
   }
-  return { handle: entry.handle, name: entry.name };
+  return { xId: entry.xId, handle: entry.handle, name: entry.name };
 }

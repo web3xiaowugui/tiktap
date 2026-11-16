@@ -19,13 +19,34 @@ export interface CreatedUser {
   allowTxHash: string | null;
   fundedWei: string;
   warning?: string;
+  /** true = 这个 X id 之前就建过号，直接复用原地址。 */
+  reused?: boolean;
 }
 
 /**
  * 建号：生成托管地址 → 私钥加密入库 → 合约白名单放过 →（可选）打一点原生 gas。
  * 用户不持有私钥，交易由后端用这个地址签名发起。
  */
-export async function createUser(db: Db, creator?: string): Promise<CreatedUser> {
+export async function createUser(
+  db: Db,
+  creator?: string,
+  xUserId?: string,
+): Promise<CreatedUser> {
+  const known = xUserId
+    ? (db
+        .prepare("SELECT id, address FROM users WHERE x_user_id = ?")
+        .get(xUserId) as { id: number; address: string } | undefined)
+    : undefined;
+  if (known) {
+    return {
+      id: known.id,
+      address: known.address,
+      allowTxHash: null,
+      fundedWei: "0",
+      reused: true,
+    };
+  }
+
   const wallet = createCustodialWallet();
   const email = `${wallet.address.toLowerCase()}@tiktap.local`;
 
@@ -36,9 +57,9 @@ export async function createUser(db: Db, creator?: string): Promise<CreatedUser>
 
   const result = db
     .prepare(
-      "INSERT INTO users (email, address, enc_pkey, creator, created_at) VALUES (?, ?, ?, ?, ?)",
+      "INSERT INTO users (email, address, enc_pkey, creator, created_at, x_user_id) VALUES (?, ?, ?, ?, ?, ?)",
     )
-    .run(email, wallet.address, wallet.encPkey, creator ?? null, Date.now());
+    .run(email, wallet.address, wallet.encPkey, creator ?? null, Date.now(), xUserId ?? null);
   const id = Number(result.lastInsertRowid);
 
   const cfg = readConfig();

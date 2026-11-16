@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
   email      TEXT UNIQUE NOT NULL,
   address    TEXT UNIQUE NOT NULL,
   enc_pkey   TEXT NOT NULL,           -- AES-256-GCM，仅后端可解
+  x_user_id  TEXT,                    -- X（Twitter）数字 id，登录时写入，改 handle 不影响
   creator    TEXT,                    -- 注册来源，演示期可空
   created_at INTEGER NOT NULL
 );

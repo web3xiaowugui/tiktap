@@ -178,14 +178,17 @@ export async function getRound(): Promise<{
 }
 
 /** 建托管号：生成地址、入白名单、打 gas，返回地址。 */
-export async function createUser(): Promise<{
+export async function createUser(xUserId?: string): Promise<{
   id: number;
   address: string;
   allowTxHash: string | null;
   fundedWei: string;
   warning?: string;
 }> {
-  return request("/users", { method: "POST", body: "{}" });
+  return request("/users", {
+    method: "POST",
+    body: JSON.stringify(xUserId ? { xUserId } : {}),
+  });
 }
 
 export async function getUser(address: string): Promise<{ id: number; address: string } | null> {

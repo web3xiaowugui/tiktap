@@ -106,16 +106,30 @@ export function registerRoutes(router: Router, db: Db): void {
 
   // ---- 建号（托管地址 + 白名单 + gas）----
   router.post("/api/users", async ({ req }) => {
-    const body = await readJson<{ creator?: string }>(req);
-    return createUser(db, body.creator);
+    const body = await readJson<{ creator?: string; xUserId?: string }>(req);
+    return createUser(db, body.creator, body.xUserId?.trim() || undefined);
   });
 
   router.get("/api/users/:address", async ({ params }) => {
     const row = db
-      .prepare("SELECT id, address, created_at FROM users WHERE LOWER(address) = LOWER(?)")
-      .get(params.address) as { id: number; address: string; created_at: number } | undefined;
+      .prepare(
+        "SELECT id, address, x_user_id, created_at FROM users WHERE LOWER(address) = LOWER(?)",
+      )
+      .get(params.address) as
+      | {
+          id: number;
+          address: string;
+          x_user_id: string | null;
+          created_at: number;
+        }
+      | undefined;
     if (!row) throw new HttpError(404, `用户不存在：${params.address}`);
-    return row;
+    return {
+      id: row.id,
+      address: row.address,
+      xUserId: row.x_user_id,
+      created_at: row.created_at,
+    };
   });
 
   // ---- 领体验币（用户地址自己 mint）----
@@ -373,6 +387,7 @@ export function registerRoutes(router: Router, db: Db): void {
       handle: profile.handle,
       email: `${profile.handle}@x`,
       provider: "x",
+      xId: profile.xId,
     };
   });
 

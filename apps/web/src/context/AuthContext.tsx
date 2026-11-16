@@ -52,7 +52,14 @@ function rememberAddress(address: string): void {
  * 拿到（或创建）这个人的托管钱包地址。
  * 先看本地缓存，再确认后端确实有这个用户，最后才新建 —— 避免每次登录都多造一个号。
  */
-async function ensureCustodialAddress(known?: string): Promise<string> {
+async function ensureCustodialAddress(known?: string, xId?: string): Promise<string> {
+  // 有 X id 就交给后端按 id 复用/新建，前端缓存地址仅供参考。
+  if (xId) {
+    const created = await createUser(xId);
+    rememberAddress(created.address);
+    return created.address;
+  }
+
   const candidate = known ?? readStoredAddress();
 
   if (candidate) {
@@ -139,7 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const withCustody = useCallback(
     async (nextUser: AuthUser) => {
-      const address = await ensureCustodialAddress(nextUser.address);
+      const address = await ensureCustodialAddress(nextUser.address, nextUser.xId);
       return remember({ ...nextUser, address });
     },
     [remember],

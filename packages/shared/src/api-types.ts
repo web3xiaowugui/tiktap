@@ -241,6 +241,8 @@ export interface AuthUser {
   handle: string;
   email: string;
   provider: AuthProvider;
+  /** X 的数字 id：稳定、改名不变，后端按它复用账号。 */
+  xId?: string;
   address?: string;
   chainId?: string;
 }
