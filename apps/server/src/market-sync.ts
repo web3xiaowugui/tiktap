@@ -24,7 +24,7 @@ export async function syncMarkets(db: Db): Promise<{
 
   for (const [symbol, address] of Object.entries(cfg.tokens)) {
     db.prepare(
-      "UPDATE markets SET token_address = ? WHERE bet_token = ? AND token_address IS NULL",
+      "UPDATE markets SET token_address = ? WHERE bet_token = ?",
     ).run(address, symbol);
   }
 

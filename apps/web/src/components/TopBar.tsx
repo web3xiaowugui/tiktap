@@ -2,6 +2,7 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom";
 import { LogOut, Search, Settings, Trophy, User, Wallet } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
+import { FaucetButton } from "@/components/FaucetButton";
 import { Logo } from "@/components/Logo";
 import { SearchDialog, useSearchHotkey } from "@/components/SearchDialog";
 import { useAuth } from "@/context/AuthContext";
@@ -68,6 +69,8 @@ export function TopBar() {
       </div>
 
       <div className="flex shrink-0 items-center gap-2.5">
+        <FaucetButton />
+
         <span className="hidden items-center gap-1.5 sm:flex">
           <Wallet className="h-3.5 w-3.5 text-muted2" />
           <span className="num text-[11.5px] text-white">$0.00</span>
