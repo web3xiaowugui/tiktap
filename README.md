@@ -65,17 +65,24 @@ curl http://127.0.0.1:8787/api/health
 
 ### 合约
 
+### 合约
+
+| 文件 | 内容 |
+| --- | --- |
+| `contracts/src/TikTapToken.sol` | 下注代币，公开 `mint` + 单地址上限 |
+| `contracts/src/PoolMarket.sol` | 二元彩池：地址白名单、600 块一轮、前 300 块可下注、operator 结算、按份额派奖、单边退款 |
+
 ```bash
-anvil --block-time 1     # 本地链
-pnpm contracts:build
-pnpm contracts:test
+pnpm contracts:test      # 35 个用例，内存 EVM，约 10ms
+pnpm contracts:node      # anvil：1 秒一块、chain id 195、RPC 8545
+PRIVATE_KEY=0x... pnpm contracts:deploy   # 部署到本地 anvil
 ```
 
-Foundry v1.9.0 已安装（`forge` / `cast` / `anvil` / `chisel` 在 `%USERPROFILE%\.foundry\bin`，已加入用户 PATH）。合约**不引入任何依赖库**（ERC20 与权限自己写），因此不需要 `forge install`。
+Foundry v1.9.0 已安装（`forge` / `cast` / `anvil` / `chisel` 在 `%USERPROFILE%\.foundry\bin`，已加入用户 PATH）。合约本身**不引入任何 Solidity 依赖**（ERC20 与权限自己写）；只有测试用 vendored 的 `forge-std`（新环境跑一次 `pnpm contracts:setup`）。细节（常量、白名单、派奖取整、本地完整流程）见 [contracts/README.md](contracts/README.md)。
 
 ## 设计要点
 
-- **单一入口**：用户地址在库里托管，后端用用户私钥签名发交易；合约用地址白名单（`onlyUser`）挡住外部钱包，`settle` 仅 operator。所有写操作必经后端，所以一定有 txHash，DB 与链不会漂。
+- **单一入口**：用户地址在库里托管，后端用用户私钥签名发交易；合约用 `allowed` 地址白名单挡住外部钱包（`bet` 显式校验，不依赖 `msg.sender` 的身份含义），`settle` 仅 operator。所有写操作必经后端，所以一定有 txHash，DB 与链不会漂。
 - **数据准确**：每笔写操作 `pending` 落库 → 查 receipt → `confirmed`；`tx_hash` 唯一键保证幂等；重启时补查超时的 pending，不需要链上索引器。
 - **轮次**：合约按区块高度派生 roundId（600 区块一轮，前 300 可下注），前端与后端共用 `packages/shared/src/rounds.ts` 的常量。
 - **共享代码用转发壳**：`apps/web/src/api/types.ts` 与 `src/lib/rounds.ts` 只剩一行 `export * from "@tiktap/shared/…"`，所以全站 import 未改。

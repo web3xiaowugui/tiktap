@@ -14,6 +14,7 @@
     "contracts:setup": "git clone --depth 1 https://github.com/foundry-rs/forge-std contracts/lib/forge-std",
     "contracts:build": "forge build --root contracts",
     "contracts:test": "forge test --root contracts",
+    "contracts:deploy": "forge script contracts/script/Deploy.s.sol:Deploy --root contracts --broadcast --rpc-url http://127.0.0.1:8545",
     "contracts:node": "anvil --block-time 1 --chain-id 195"
   }
 }
