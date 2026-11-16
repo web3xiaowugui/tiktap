@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent }
 import { cn } from "@/lib/cn";
 import { fmtBlock, fmtQty } from "@/lib/format";
 import {
+  ROUND_INTERVAL_BLOCKS,
   getTimelineRounds,
   type RoundStatus,
   type TimelineRound,
@@ -75,15 +76,12 @@ export function RoundTimeline({
   );
   // 刻度打在轮次边界上（正好每格 25%）；窗口窄就隔一格打一个，
   // 不要用固定数量把数字挤到格子中间去。
-  const ROUND_SLOTS = rounds.length;
+  // 刻度打在每轮起点上（每 300 块一档，盘上一共 6 档）；窗口窄就隔一轮打一个。
   const tickStep = trackWidth > 0 && trackWidth < 420 ? 2 : 1;
   const ticks: Array<{ block: number; left: number }> = [];
-  for (let index = 0; index <= ROUND_SLOTS; index += tickStep) {
-    const ratio = index / ROUND_SLOTS;
-    ticks.push({
-      block: Math.round(domainStart + ratio * domain),
-      left: ratio * 100,
-    });
+  for (let step = 0; step * ROUND_INTERVAL_BLOCKS <= domain; step += tickStep) {
+    const offset = step * ROUND_INTERVAL_BLOCKS;
+    ticks.push({ block: domainStart + offset, left: (offset / domain) * 100 });
   }
 
   const topRounds = rounds.filter((round) => round.lane === "top");

@@ -98,7 +98,7 @@ POST /api/bet
 | 池子数字 / 人数 | `GET /api/pools` → 链上 `pools(round, marketId)`；人数从 `txs` 统计（合约只存金额，不存地址列表） |
 | 我的下注 / 收到多少 / 领取 | `GET /api/my-bet` → `stakeOf` + `previewClaim` + `claimed`；几千块后出现「领取」按钮走 `POST /api/claim` |
 | 我的持仓 | `GET /api/holdings?address` → 只列当前轮（下注中）和上一轮（待开奖）的仓位，已开奖的不在这里 |
-| 轮次 / 倒计时 / 封盘 | `GET /api/round`（每 4s 轮询一次，块高用本地时钟外推）；网格按合约的 `anchor + 600n` 算，不再用前端 mock 的 anchor |
+| 轮次 / 倒计时 / 封盘 | `GET /api/round`（每 4s 轮询一次，块高用本地时钟外推）；网格按合约的 `anchor + 300n` 算（每 300 块起一轮、每轮 600 块，所以相邻两轮重叠一半：一轮在下注期，上一轮在封盘期） |
 
 K 线仍是浏览器直连 OKX（见上），行情不进后端。观点 / 动态 / 持有人 / 排行榜 / 个人主页仍是后端 mock 数据，还没上链、也没进 SQLite。
 
@@ -131,7 +131,7 @@ POST /api/claim
 | 文件 | 内容 |
 | --- | --- |
 | `contracts/src/TikTapToken.sol` | 下注代币，公开 `mint` + 单地址上限 |
-| `contracts/src/PoolMarket.sol` | 二元彩池：市场 = 标的×下注代币（每市场绑一个 ERC20），池子 = (市场, 轮次)；白名单、600 块一轮、前 300 块可下注、operator 结算、按份额派奖、单边退款 |
+| `contracts/src/PoolMarket.sol` | 二元彩池：市场 = 标的×下注代币（每市场绑一个 ERC20），池子 = (市场, 轮次)；白名单、每 300 块起一轮（每轮 600 块 = 300 下注 + 300 封盘，两轮重叠）、operator 结算、按份额派奖、单边退款 |
 
 ```bash
 pnpm contracts:test      # 41 个用例，内存 EVM，约 12ms
@@ -145,7 +145,7 @@ Foundry v1.9.0 已安装（`forge` / `cast` / `anvil` / `chisel` 在 `%USERPROFI
 
 - **单一入口**：用户地址在库里托管，后端用用户私钥签名发交易；合约用 `allowed` 地址白名单挡住外部钱包（`bet` 显式校验，不依赖 `msg.sender` 的身份含义），`settle` 仅 operator。所有写操作必经后端，所以一定有 txHash，DB 与链不会漂。
 - **数据准确**：每笔写操作 `pending` 落库 → 查 receipt → `confirmed`；`tx_hash` 唯一键保证幂等；重启时补查超时的 pending，不需要链上索引器。
-- **轮次**：合约按区块高度派生 roundId（600 区块一轮，前 300 可下注），前端与后端共用 `packages/shared/src/rounds.ts` 的常量。`markets` 表（`symbol + bet_token → market_id`）是「前端 symbol ↔ 链上 marketId」的唯一映射。
+- **轮次**：合约按区块高度派生 roundId（每 300 块起一轮、每轮 600 块：前 300 下注、后 300 封盘等结算），任意时刻同时有一轮在下注、一轮在封盘，两者重叠 300 块；前端与后端共用 `packages/shared/src/rounds.ts` 的常量。`markets` 表（`symbol + bet_token → market_id`）是「前端 symbol ↔ 链上 marketId」的唯一映射。
 - **共享代码用转发壳**：`apps/web/src/api/types.ts` 与 `src/lib/rounds.ts` 只剩一行 `export * from "@tiktap/shared/…"`，所以全站 import 未改。
 
 ## 前端（apps/web）

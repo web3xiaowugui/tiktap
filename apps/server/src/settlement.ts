@@ -356,7 +356,7 @@ export function startAutoSettler(db: Db, cfg: ChainConfig, intervalMs = 3_000): 
     busy = true;
     try {
       const info = await getRoundInfo(cfg);
-      const finishedRounds = [info.currentRound - 1, info.currentRound - 2].filter((r) => r >= 0);
+      const finishedRounds = [info.currentRound - 2, info.currentRound - 3].filter((r) => r >= 0);
 
       for (const roundIndex of finishedRounds) {
         const unsettled = await marketsWithUnsettledBets(db, cfg, roundIndex);

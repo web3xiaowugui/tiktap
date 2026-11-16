@@ -345,6 +345,6 @@ export function registerRoutes(router: Router, db: Db): void {
 /** 默认结算「上一轮」（当前轮的上一轮一定已经结束了）。 */
 async function defaultRound(cfg: ReturnType<typeof readConfig>): Promise<number> {
   const info = await getRoundInfo(cfg);
-  if (info.currentRound === 0) throw new HttpError(400, "第 0 轮还没结束，没有可结算的轮次");
-  return info.currentRound - 1;
+  if (info.currentRound < 2) throw new HttpError(400, "还没有已完成的轮次（一轮要 600 块才结算）");
+  return info.currentRound - 2;
 }

@@ -20,8 +20,14 @@ interface IERC20 {
  * - 单边池（只有一边有人押）结算时全额退款。派奖向下取整，零头留在合约。
  */
 contract PoolMarket {
+    /// 每轮总长：300 块下注 + 300 块封盘。
     uint256 public constant ROUND_BLOCKS = 600;
     uint256 public constant BETTING_BLOCKS = 300;
+    /**
+     * 每 300 块就起一轮新的：所以任意时刻都同时有两轮活着 ——
+     * 较新的那轮在下注期，上一轮在封盘期（等结算），两者的窗口重叠一半。
+     */
+    uint256 public constant ROUND_INTERVAL_BLOCKS = 300;
 
     uint8 public constant SIDE_UP = 0;
     uint8 public constant SIDE_DOWN = 1;
@@ -108,16 +114,23 @@ contract PoolMarket {
 
     // ---------------------------------------------------------------- 轮次
 
+    /** 当前「下注轮」的编号（最新的一轮；它的前一轮还在封盘期里）。 */
     function currentRound() public view returns (uint256) {
-        return (block.number - anchorBlock) / ROUND_BLOCKS;
+        return (block.number - anchorBlock) / ROUND_INTERVAL_BLOCKS;
     }
 
     function roundStart(uint256 roundIndex) public view returns (uint256) {
-        return anchorBlock + roundIndex * ROUND_BLOCKS;
+        return anchorBlock + roundIndex * ROUND_INTERVAL_BLOCKS;
     }
 
     function roundEnd(uint256 roundIndex) public view returns (uint256) {
         return roundStart(roundIndex) + ROUND_BLOCKS;
+    }
+
+    /** 正在下注期的那一轮：上一轮还在封盘期等结算，这两轮是重叠的。 */
+    function waitingRound() public view returns (uint256) {
+        uint256 current = currentRound();
+        return current == 0 ? 0 : current - 1;
     }
 
     function isBettingOpen() public view returns (bool) {

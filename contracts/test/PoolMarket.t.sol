@@ -82,23 +82,36 @@ contract PoolMarketTest is Test {
         assertTrue(market.isBettingOpen());
     }
 
-    function testBettingWindowClosesAtBlock300() public {
-        vm.roll(ANCHOR + 299);
+    /// 任意时刻都有两轮活着：新的那轮在下注，上一轮在封盘等结算，窗口重叠一半。
+    function testTwoRoundsAreAliveAtOnce() public {
+        vm.roll(ANCHOR + 10);
+        assertEq(market.currentRound(), 0);
         assertTrue(market.isBettingOpen());
 
         vm.roll(ANCHOR + 300);
-        assertFalse(market.isBettingOpen());
-
-        vm.roll(ANCHOR + 600);
         assertEq(market.currentRound(), 1);
+        assertEq(market.waitingRound(), 0);
         assertTrue(market.isBettingOpen());
+        // 第 0 轮刚进封盘期：还不能结算
+        vm.prank(operatorAddr);
+        vm.expectRevert(PoolMarket.RoundNotFinished.selector);
+        market.settle(MARKET_TEST, 0, UP);
+        // 它的窗口还剩 300 块才结束
+        assertEq(market.roundEnd(0) - block.number, 300);
     }
 
-    function testBetAfterWindowReverts() public {
+    function testBetAtNewRoundStartGoesToNewRound() public {
+        _bet(alice, MARKET_TEST, UP, 10 ether);
+
         vm.roll(ANCHOR + 300);
-        vm.prank(alice);
-        vm.expectRevert(PoolMarket.BettingClosed.selector);
-        market.bet(MARKET_TEST, UP, 1 ether);
+        _bet(bob, MARKET_TEST, DOWN, 10 ether);
+
+        (uint256 up0, uint256 down0, , ) = market.pools(0, MARKET_TEST);
+        (uint256 up1, uint256 down1, , ) = market.pools(1, MARKET_TEST);
+        assertEq(up0, 10 ether);
+        assertEq(down0, 0);
+        assertEq(up1, 0);
+        assertEq(down1, 10 ether);
     }
 
     // -------------------------------------------------------------- 下注
@@ -428,7 +441,7 @@ contract PoolMarketTest is Test {
     function testNextRoundHasFreshState() public {
         _bet(alice, MARKET_TEST, UP, 50 ether);
 
-        vm.roll(ANCHOR + 600);
+        vm.roll(ANCHOR + 300);
         _bet(bob, MARKET_TEST, DOWN, 70 ether);
 
         (uint256 upAmount, uint256 downAmount, , ) = market.pools(0, MARKET_TEST);

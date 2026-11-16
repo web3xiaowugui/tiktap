@@ -28,13 +28,13 @@ export async function anchorBlock(cfg: ChainConfig): Promise<number> {
 export async function roundIndexFor(cfg: ChainConfig, roundStartBlock: number): Promise<number> {
   const anchor = await anchorBlock(cfg);
   const delta = roundStartBlock - anchor;
-  if (delta < 0 || delta % 600 !== 0) {
+  if (delta < 0 || delta % 300 !== 0) {
     throw new HttpError(
       400,
-      `roundStartBlock ${roundStartBlock} 不在轮次网格上（anchor=${anchor}，每轮 600 块）`,
+      `roundStartBlock ${roundStartBlock} 不在轮次网格上（anchor=${anchor}，每 300 块起一轮）`,
     );
   }
-  return delta / 600;
+  return delta / 300;
 }
 
 export function marketFor(db: Db, marketSymbol: string, betTokenSymbol: string): MarketRow {
@@ -110,7 +110,7 @@ export async function readPool(
   return {
     marketId: marketRow.market_id,
     roundIndex,
-    roundStartBlock: anchor + roundIndex * 600,
+    roundStartBlock: anchor + roundIndex * 300,
     longAmount: toTokenUnits(upAmount),
     shortAmount: toTokenUnits(downAmount),
     longParticipants: participants.long,
@@ -319,7 +319,7 @@ export async function readHoldings(
         amount: toTokenUnits(up + down),
         time: new Date().toISOString(),
         roundOffset,
-        roundStartBlock: anchor + roundIndex * 600,
+        roundStartBlock: anchor + roundIndex * 300,
       });
     }
   }

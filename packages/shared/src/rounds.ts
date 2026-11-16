@@ -9,7 +9,7 @@ export const ROUND_BETTING_BLOCKS = 300;
  * 合约里轮次首尾相接、不重叠：第 n 轮 = [anchor + 600n, anchor + 600n + 600)。
  * 这里保持和 `PoolMarket.ROUND_BLOCKS` 一致，别再退回 300 的间隔。
  */
-export const ROUND_INTERVAL_BLOCKS = 600;
+export const ROUND_INTERVAL_BLOCKS = 300;
 
 /**
  * 本地兜底用的伪区块高度：只有拿不到 `/api/round` 时才用。
@@ -53,12 +53,12 @@ export function roundStartFor(block: number, anchor?: number | null): number {
   if (anchor === null || anchor === undefined || block < anchor) {
     return Math.floor(block / ROUND_INTERVAL_BLOCKS) * ROUND_INTERVAL_BLOCKS;
   }
-  return anchor + Math.floor((block - anchor) / ROUND_DURATION_BLOCKS) * ROUND_DURATION_BLOCKS;
+  return anchor + Math.floor((block - anchor) / ROUND_INTERVAL_BLOCKS) * ROUND_INTERVAL_BLOCKS;
 }
 
 function roundNumberFor(startBlock: number, anchor?: number | null): number {
   if (anchor !== null && anchor !== undefined && startBlock >= anchor) {
-    return Math.floor((startBlock - anchor) / ROUND_DURATION_BLOCKS);
+    return Math.floor((startBlock - anchor) / ROUND_INTERVAL_BLOCKS);
   }
   return Math.floor(startBlock / ROUND_INTERVAL_BLOCKS) + 1;
 }
@@ -80,7 +80,7 @@ export function getActiveRound(block: number, anchor?: number | null): RoundWind
 
 export function getPreviousRound(block: number, anchor?: number | null): RoundWindow {
   const active = getActiveRound(block, anchor);
-  return makeRound(active.startBlock - ROUND_DURATION_BLOCKS, "waiting", anchor);
+  return makeRound(active.startBlock - ROUND_INTERVAL_BLOCKS, "waiting", anchor);
 }
 
 export function getRoundWindows(
@@ -119,15 +119,14 @@ export function roundCountdownFor(startBlock: number, block: number): number {
 }
 
 /**
- * 时间轴上的四轮。上一行放「当前轮 + 下一轮」，下一行放「前两轮」：
- * 合约的轮次是首尾相接的，如果像 mock 那样一行隔一轮，两行会变成棋盘、
- * 每行中间空一整格；按组排则每行都是一条连续的带子，两条带在轴中点相接。
+ * 时间轴上的四轮。每 300 块起一轮、每轮 600 块，所以相邻两轮在横向上重叠
+ * 半个格子：上下两行交错 300 块，形成一条跨轴连续的带子。
  */
 const TIMELINE_DEFS: Array<{ offset: number; lane: "top" | "bottom" }> = [
-  { offset: -2, lane: "bottom" },
+  { offset: -2, lane: "top" },
   { offset: -1, lane: "bottom" },
   { offset: 0, lane: "top" },
-  { offset: 1, lane: "top" },
+  { offset: 1, lane: "bottom" },
 ];
 
 /**
@@ -138,7 +137,7 @@ export function getTimelineRounds(block: number, anchor?: number | null): Timeli
   const activeStart = roundStartFor(block, anchor);
 
   return TIMELINE_DEFS.map(({ offset, lane }) => {
-    const startBlock = activeStart + offset * ROUND_DURATION_BLOCKS;
+    const startBlock = activeStart + offset * ROUND_INTERVAL_BLOCKS;
 
     return {
       id: `round-${startBlock}`,

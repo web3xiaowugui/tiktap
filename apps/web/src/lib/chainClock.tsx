@@ -11,7 +11,7 @@ import {
 import { getRound } from "@/api";
 import {
   ROUND_BETTING_BLOCKS,
-  ROUND_DURATION_BLOCKS,
+  ROUND_INTERVAL_BLOCKS,
   getBlockNumber,
   roundStartFor,
 } from "@/lib/rounds";
@@ -102,7 +102,7 @@ export function ChainClockProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    const anchor = sample.info.roundStartBlock - sample.info.currentRound * ROUND_DURATION_BLOCKS;
+    const anchor = sample.info.roundStartBlock - sample.info.currentRound * ROUND_INTERVAL_BLOCKS;
     const drift = Math.max(0, Math.floor((Date.now() - sample.at) / 1_000));
     const block = sample.info.blockNumber + drift;
     const start = roundStartFor(block, anchor);
@@ -111,7 +111,7 @@ export function ChainClockProvider({ children }: { children: ReactNode }) {
     return {
       block,
       anchor,
-      currentRound: Math.floor((block - anchor) / ROUND_DURATION_BLOCKS),
+      currentRound: Math.floor((block - anchor) / ROUND_INTERVAL_BLOCKS),
       bettingOpen: blocksToClose > 0,
       blocksToClose,
       live: true,
