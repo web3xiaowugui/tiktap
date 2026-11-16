@@ -427,6 +427,16 @@ function PoolStat({
       )}
     >
       <div className="flex-1 p-2.5 text-center">
+        {isSide && (
+          <div
+            className={cn(
+              "mb-0.5 text-[11px] font-semibold leading-none",
+              tone === "long" ? "text-up" : "text-down",
+            )}
+          >
+            {tone === "long" ? "买涨" : "买跌"}
+          </div>
+        )}
         <div
           className="flex min-w-0 items-baseline justify-center gap-0.5"
           title={`${fmtQty(amount, 0)} ${unit}`}
