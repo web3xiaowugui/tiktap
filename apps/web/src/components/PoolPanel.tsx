@@ -115,7 +115,7 @@ function PoolDetails({
         style={{
           // 两侧按金额分宽度（没交易时各占一半），右边总池只占内容宽。
           // 用金额当 fr：0fr 会把两格压到最小、剩下的空白糊在右边，看起来就像右边那格吞掉了一大块。
-          gridTemplateColumns: `minmax(72px, ${total > 0 ? pool.longAmount : 1}fr) minmax(72px, ${total > 0 ? pool.shortAmount : 1}fr) 88px`,
+          gridTemplateColumns: `minmax(64px, ${total > 0 ? pool.longAmount : 1}fr) minmax(64px, ${total > 0 ? pool.shortAmount : 1}fr) minmax(112px, 28%)`,
         }}
       >
         <PoolStat
