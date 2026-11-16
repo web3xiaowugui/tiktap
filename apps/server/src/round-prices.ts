@@ -2,6 +2,7 @@ import { publicClient } from "./chain.ts";
 import { POOL_MARKET_ABI } from "./contracts.ts";
 import { HttpError } from "./http.ts";
 import { requireMarket, type ChainConfig } from "./tx.ts";
+import { listMarkets } from "./markets.ts";
 import type { Db } from "./db.ts";
 
 /**
@@ -168,6 +169,11 @@ export async function ensureRoundPrices(
 ): Promise<RoundPriceRow> {
   const upper = symbol.toUpperCase();
   const existing = getRoundPrice(db, upper, roundIndex);
+  // 锁定价 + 开奖价都齐了直接返回，不用再为历史轮次做链上 / 行情请求。
+  if (existing?.lockPrice != null && existing.settlePrice != null) {
+    return existing;
+  }
+
   const timeline = await roundTimeline(cfg, roundIndex);
   const openMinute = minuteOf(timeline.startTime);
   const closeMinute = minuteOf(timeline.endTime);
@@ -210,4 +216,43 @@ export async function ensureRoundPrices(
   const row = getRoundPrice(db, upper, roundIndex);
   if (!row) throw new HttpError(500, `写入 round_prices 失败：${upper} #${roundIndex}`);
   return row;
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * 回填所有「已经结束」轮次的锁定 / 开奖价格，不看这一轮有没有人下注。
+ *
+ * 行情接口有频率限制，按 delayMs 节流串行跑；已经写齐的轮次直接跳过，
+ * 所以正常重启时几乎不产生行情请求。服务启动后在后台调用即可。
+ */
+export async function backfillRoundPrices(
+  db: Db,
+  cfg: ChainConfig,
+  currentRound: number,
+  delayMs = 120,
+): Promise<{ attempted: number; filled: number; failed: number }> {
+  const symbols = [...new Set(listMarkets(db).map((row) => row.symbol))];
+  let attempted = 0;
+  let filled = 0;
+  let failed = 0;
+
+  // currentRound 是下注中的最新轮；它和上一轮都还没结束，只回填到 currentRound - 2。
+  for (let roundIndex = 0; roundIndex <= currentRound - 2; roundIndex += 1) {
+    for (const symbol of symbols) {
+      const before = getRoundPrice(db, symbol, roundIndex);
+      if (before?.lockPrice != null && before.settlePrice != null) continue;
+
+      attempted += 1;
+      try {
+        const after = await ensureRoundPrices(db, cfg, symbol, roundIndex);
+        if (after.settlePrice != null) filled += 1;
+      } catch {
+        failed += 1;
+      }
+      if (delayMs > 0) await sleep(delayMs);
+    }
+  }
+
+  return { attempted, filled, failed };
 }

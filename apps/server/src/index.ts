@@ -7,7 +7,8 @@ import { syncMarkets } from "./market-sync.ts";
 import { Router, startServer } from "./http.ts";
 import { publicClient, RPC_URL, tryGetBlockNumber } from "./chain.ts";
 import { readConfig } from "./tx.ts";
-import { backfillBetResults, startAutoSettler } from "./settlement.ts";
+import { backfillBetResults, getRoundInfo, startAutoSettler } from "./settlement.ts";
+import { backfillRoundPrices } from "./round-prices.ts";
 
 const db = openDb();
 seedMarkets(db);
@@ -76,3 +77,21 @@ if (cfg.market && process.env.AUTO_SETTLE !== "0") {
 
 const port = Number(process.env.PORT ?? 8787);
 startServer(router, port);
+
+// 所有已结束轮次都要有开奖价，不依赖有没有下注 / 有没有人点开。
+// 启动后后台补齐历史轮次；新结束的轮次由自动结算任务继续预取。
+if (cfg.market) {
+  void (async () => {
+    try {
+      const info = await getRoundInfo(cfg);
+      const result = await backfillRoundPrices(db, cfg, info.currentRound);
+      if (result.attempted > 0) {
+        console.log(
+          `[prices] 已开奖轮次价格补齐：成功 ${result.filled}，失败 ${result.failed}`,
+        );
+      }
+    } catch (error) {
+      console.warn("[prices] 回填已开奖轮次价格失败：", String(error).slice(0, 200));
+    }
+  })();
+}
