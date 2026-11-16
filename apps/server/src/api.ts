@@ -23,6 +23,7 @@ import {
 import { readConfig } from "./tx.ts";
 import { getRoundPrice } from "./round-prices.ts";
 import { readMarketActivity } from "./activity.ts";
+import { readRoundHolders } from "./holders.ts";
 import { listBets } from "./bets.ts";
 import {
   marketFor,
@@ -39,7 +40,7 @@ import {
   betPoolFor,
   DEMO_PROFILE,
   feedFor,
-  holdersFor,
+
   LEADERBOARD,
   makeCandles,
   makeEquity,
@@ -356,9 +357,16 @@ export function registerRoutes(router: Router, db: Db): void {
   });
 
   // ---- 市场面板 ----
-  router.get("/api/holders", ({ query }) =>
-    holdersFor(requireToken(query.get("symbol") ?? "").symbol, readRoundBlock(query)),
-  );
+  /** 一轮参与者（市场级）：按下注记录按地址聚合。 */
+  router.get("/api/holders", ({ query }) => {
+    const symbol = requireToken(query.get("symbol") ?? "").symbol;
+    const betToken = requireBetToken(query.get("token") ?? "TEST").symbol;
+    const roundStartBlock = readRoundBlock(query);
+    if (!readConfig().market) return [];
+
+    const row = marketFor(db, symbol, betToken);
+    return readRoundHolders(db, row, roundIndexFor(roundStartBlock));
+  });
 
   router.get("/api/feed", ({ query }) =>
     feedFor(requireToken(query.get("symbol") ?? "").symbol, readRoundBlock(query)),

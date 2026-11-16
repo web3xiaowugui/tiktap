@@ -128,8 +128,14 @@ export async function getCandles(
   return request<Candle[]>(`/candles${query({ symbol, timeframe })}`);
 }
 
-export async function getHolders(symbol: string, roundStartBlock?: number): Promise<Holder[]> {
-  return request<Holder[]>(`/holders${query({ symbol, round: roundStartBlock })}`);
+export async function getHolders(
+  symbol: string,
+  betToken: string,
+  roundStartBlock?: number,
+): Promise<Holder[]> {
+  return request<Holder[]>(
+    `/holders${query({ symbol, token: betToken, round: roundStartBlock })}`,
+  );
 }
 
 export async function getFeed(symbol: string, roundStartBlock?: number): Promise<FeedItem[]> {

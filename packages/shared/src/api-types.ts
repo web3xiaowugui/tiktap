@@ -110,17 +110,21 @@ export interface Candle {
 
 export interface Holder {
   id: string;
+  address: string;
   name: string;
   avatar: string;
-  leverage: number;
-  side: Side;
-  holding: string;
-  size: string;
-  sizeUsd: number;
-  pnl: number;
-  pnlPct: number;
-  avgPrice: number;
-  note?: string;
+  /** 买涨：笔数 / 金额（带单位）。 */
+  longCount: number;
+  longAmount: string;
+  /** 买跌：笔数 / 金额（带单位）。 */
+  shortCount: number;
+  shortAmount: string;
+  /** 结算后：是否获胜。 */
+  won?: boolean;
+  /** 结算后：这轮收到的数量（带单位）。 */
+  received?: string;
+  /** 结算后：盈亏（带单位和正负号）。 */
+  pnl?: string;
   /** Whether the demo account follows this trader; drives 仅看已关注. */
   followed?: boolean;
 }

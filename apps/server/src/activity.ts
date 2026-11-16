@@ -23,7 +23,7 @@ const GRADIENTS = [
 ];
 
 /** 地址决定渐变，同一个人头像稳定。 */
-function gradientFor(address: string): string {
+export function gradientFor(address: string): string {
   let hash = 0;
   for (let i = 2; i < address.length; i += 1) {
     hash = (hash * 31 + address.charCodeAt(i)) >>> 0;
@@ -31,12 +31,12 @@ function gradientFor(address: string): string {
   return GRADIENTS[hash % GRADIENTS.length];
 }
 
-function shortAddress(address: string): string {
+export function shortAddress(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
 /** wei → 人类可读数量（最多 2 位小数，去掉多余的 0）。 */
-function formatAmount(amountWei: string): string {
+export function formatAmount(amountWei: string): string {
   const value = Number(amountWei) / 1e18;
   if (!Number.isFinite(value)) return "0";
   const fixed = value.toFixed(2).replace(/\.?0+$/, "");
@@ -52,7 +52,7 @@ function relativeTime(timestamp: number): string {
   return `${Math.floor(hours / 24)}天`;
 }
 
-function displayName(row: {
+export function displayName(row: {
   address: string;
   x_name: string | null;
   x_handle: string | null;

@@ -417,74 +417,7 @@ export function makeCandles(token: Token, timeframe: Timeframe, count = 110): Ca
   return normalized;
 }
 
-const HOLDERS: Holder[] = [
-  {
-    id: "h1",
-    name: "Arkive_sabb",
-    avatar: "linear-gradient(135deg,#f59e0b,#7c2d12)",
-    leverage: 20,
-    side: "long",
-    holding: "4小时",
-    size: "32.52 BTC",
-    sizeUsd: 2_547_340.48,
-    pnl: -30_557.69,
-    pnlPct: -24.26,
-    avgPrice: 77_381,
-  },
-  {
-    id: "h2",
-    name: "Rowdy",
-    avatar: "linear-gradient(135deg,#38bdf8,#1e3a8a)",
-    leverage: 20,
-    side: "long",
-    holding: "2个月",
-    size: "25.27 BTC",
-    sizeUsd: 1_978_640.88,
-    pnl: 342_880.11,
-    pnlPct: 859.01,
-    avgPrice: 63_173,
-  },
-  {
-    id: "h3",
-    name: "ceralbertraders",
-    avatar: "linear-gradient(135deg,#a3e635,#14532d)",
-    leverage: 25,
-    side: "long",
-    holding: "5小时",
-    size: "17.80 BTC",
-    sizeUsd: 1_382_882.04,
-    pnl: 5_458.82,
-    pnlPct: 8.72,
-    avgPrice: 78_012,
-    note: "这是一场马拉松，不是短跑。",
-  },
-  {
-    id: "h4",
-    name: "Hodlz",
-    avatar: "linear-gradient(135deg,#fb7185,#7f1d1d)",
-    leverage: 40,
-    side: "long",
-    holding: "3小时",
-    size: "17.41 BTC",
-    sizeUsd: 1_363_743.99,
-    pnl: 8_132.67,
-    pnlPct: 24.0,
-    avgPrice: 77_855,
-  },
-  {
-    id: "h5",
-    name: "sats69",
-    avatar: "linear-gradient(135deg,#c084fc,#4c1d95)",
-    leverage: 40,
-    side: "long",
-    holding: "3小时",
-    size: "16.66 BTC",
-    sizeUsd: 1_304_332.91,
-    pnl: 97_751.21,
-    pnlPct: 7_751.21,
-    avgPrice: 77_857,
-  },
-];
+
 
 const FEED: FeedItem[] = [
   {
@@ -984,13 +917,6 @@ const FOLLOWED_TRADERS = new Set(["Rowdy", "kamaaride", "sats69", "NORH7"]);
 
 function withFollow<T extends { name: string }>(items: T[]): Array<T & { followed: boolean }> {
   return items.map((item) => ({ ...item, followed: FOLLOWED_TRADERS.has(item.name) }));
-}
-
-export function holdersFor(
-  _symbol: string,
-  roundStartBlock?: number,
-): Holder[] {
-  return withFollow(rotatedForRound(HOLDERS, roundStartBlock));
 }
 
 export function feedFor(_symbol: string, roundStartBlock?: number): FeedItem[] {

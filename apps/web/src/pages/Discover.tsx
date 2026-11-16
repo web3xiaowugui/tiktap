@@ -84,8 +84,8 @@ export default function Discover() {
   const tokenState = useApi(() => getToken(symbol), [symbol]);
   const candlesState = useLiveCandles(symbol);
   const holdersState = useApi(
-    () => getHolders(symbol, selected.startBlock),
-    [symbol, selected.startBlock],
+    () => getHolders(symbol, betToken?.symbol ?? "TEST", selected.startBlock),
+    [symbol, betToken?.symbol, selected.startBlock],
   );
   const feedState = useApi(
     () => getFeed(symbol, selected.startBlock),
@@ -96,17 +96,21 @@ export default function Discover() {
     [symbol, betToken?.symbol, selected.startBlock],
   );
   const reloadActivity = activityState.reload;
+  const reloadHolders = holdersState.reload;
 
-  /** 下注成功后立刻刷新；结算/自动代领在后台发生，再每 5s 拉一次。 */
+  /** 下注成功后立刻刷新活动/参与者；结算、自动代领在后台发生，再每 5s 拉一次。 */
   useEffect(() => {
-    const refresh = () => reloadActivity();
+    const refresh = () => {
+      reloadActivity();
+      reloadHolders();
+    };
     window.addEventListener("tiktap:activity-refresh", refresh);
     const timer = window.setInterval(refresh, 5_000);
     return () => {
       window.removeEventListener("tiktap:activity-refresh", refresh);
       window.clearInterval(timer);
     };
-  }, [reloadActivity]);
+  }, [reloadActivity, reloadHolders]);
   const layoutRef = useRef<HTMLDivElement>(null);
   const [bottomHeight, setBottomHeight] = useState(DEFAULT_BOTTOM_HEIGHT);
   const [maxBottomHeight, setMaxBottomHeight] = useState(MAX_BOTTOM_HEIGHT);
@@ -432,19 +436,20 @@ function HoldersTable({
 
         {!loading && visible.length === 0 && (
           <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-1 text-[13px] text-muted2">
-            <p>没有符合条件的参与者</p>
-            <button
-              type="button"
-              onClick={() => setOnlyFollowed(false)}
-              className="text-[12px] font-medium text-brand2 hover:underline"
-            >
-              清除筛选
-            </button>
+            <p>{onlyFollowed ? "没有已关注的人参与" : "本轮还没有参与者"}</p>
+            {onlyFollowed && (
+              <button
+                type="button"
+                onClick={() => setOnlyFollowed(false)}
+                className="text-[12px] font-medium text-brand2 hover:underline"
+              >
+                清除筛选
+              </button>
+            )}
           </div>
         )}
 
         {visible.map((holder) => {
-          const won = settled && winner === holder.side;
           return (
             <div
               key={holder.id}
@@ -462,36 +467,40 @@ function HoldersTable({
                 </div>
               </div>
 
-              <div className="num text-center text-[14px] text-white">
-                {holder.side === "long" ? `1 / ${holder.size}` : "0 / —"}
+              <div className="num truncate text-center text-[14px] text-white">
+                {holder.longCount > 0
+                  ? `${holder.longCount} / ${holder.longAmount}`
+                  : "0 / —"}
               </div>
 
-              <div className="num text-center text-[14px] text-white">
-                {holder.side === "short" ? `1 / ${holder.size}` : "0 / —"}
+              <div className="num truncate text-center text-[14px] text-white">
+                {holder.shortCount > 0
+                  ? `${holder.shortCount} / ${holder.shortAmount}`
+                  : "0 / —"}
               </div>
 
               {settled && (
                 <div
                   className={cn(
                     "text-center font-semibold",
-                    won ? "text-up" : "text-down",
+                    holder.won ? "text-up" : "text-down",
                   )}
                 >
-                  {won ? "是" : "否"}
+                  {holder.won ? "是" : "否"}
                 </div>
               )}
 
-              <div className="num text-center text-[14px] text-white">
-                {settled ? (won ? holder.size : "0") : "—"}
+              <div className="num truncate text-center text-[14px] text-white">
+                {holder.received ?? "—"}
               </div>
 
               <div
                 className={cn(
-                  "num text-center text-[14px]",
-                  holder.pnl >= 0 ? "text-up" : "text-down",
+                  "num truncate text-center text-[14px]",
+                  holder.pnl?.startsWith("-") ? "text-down" : "text-up",
                 )}
               >
-                {fmtSignedUsd(holder.pnl)}
+                {holder.pnl ?? "—"}
               </div>
             </div>
           );
