@@ -201,6 +201,7 @@ export default function Discover() {
                 candles={candlesState.data ?? []}
                 symbol={symbol}
                 lockPrice={roundPriceState.data?.lockPrice ?? null}
+                settlePrice={roundPriceState.data?.settlePrice ?? null}
               />
             )}
           </div>

@@ -22,6 +22,8 @@ interface CandleChartProps {
   symbol: string;
   /** 当前选中轮次的锁定价格，画一条水平线。null/undefined 就不画。 */
   lockPrice?: number | null;
+  /** 已开奖轮次的开奖价格，画另一条线。 */
+  settlePrice?: number | null;
   className?: string;
 }
 
@@ -47,6 +49,7 @@ export function CandleChart({
   candles,
   symbol,
   lockPrice,
+  settlePrice,
   className,
 }: CandleChartProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -54,6 +57,7 @@ export function CandleChart({
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const lockLineRef = useRef<IPriceLine | null>(null);
+  const settleLineRef = useRef<IPriceLine | null>(null);
   const fittedRef = useRef(false);
   const [hover, setHover] = useState<HoverState | null>(null);
 
@@ -177,6 +181,7 @@ export function CandleChart({
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
       lockLineRef.current = null;
+      settleLineRef.current = null;
       fittedRef.current = false;
     };
   }, []);
@@ -245,6 +250,28 @@ export function CandleChart({
       title: "锁定价格",
     });
   }, [lockPrice, candles]);
+
+  /** 已开奖轮次的开奖价格：另一条水平线，颜色区分开。 */
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    if (!series) return;
+
+    if (settleLineRef.current) {
+      series.removePriceLine(settleLineRef.current);
+      settleLineRef.current = null;
+    }
+
+    if (settlePrice == null || !Number.isFinite(settlePrice)) return;
+
+    settleLineRef.current = series.createPriceLine({
+      price: settlePrice,
+      color: "#f0b90b",
+      lineWidth: 1,
+      lineStyle: LineStyle.Solid,
+      axisLabelVisible: true,
+      title: "开奖价格",
+    });
+  }, [settlePrice, candles]);
 
   return (
     <div ref={wrapRef} className={`relative h-full min-h-0 w-full ${className ?? ""}`}>
