@@ -68,20 +68,6 @@ export function TopBar() {
       </div>
 
       <div className="flex shrink-0 items-center gap-2.5">
-        <div className="hidden items-center gap-1.5 md:flex">
-          <span className="num text-[11.5px] text-white">$0.00</span>
-          <span className="text-[9.5px] text-muted">现金</span>
-          <button
-            type="button"
-            onClick={() => push("演示环境：充值入口暂未开放")}
-            className="rounded border border-line bg-panel px-1.5 py-0.5 text-[9.5px] text-muted transition hover:border-line2 hover:text-white"
-          >
-            充值
-          </button>
-        </div>
-
-        <span className="hidden h-4 w-px bg-line md:block" />
-
         <span className="hidden items-center gap-1.5 sm:flex">
           <Wallet className="h-3.5 w-3.5 text-muted2" />
           <span className="num text-[11.5px] text-white">$0.00</span>
