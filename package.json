@@ -11,7 +11,9 @@
     "preview": "pnpm --filter @tiktap/web preview",
     "typecheck": "pnpm -r --if-present run typecheck",
     "db:reset": "node -e \"require('node:fs').rmSync('data', { recursive: true, force: true })\"",
+    "contracts:setup": "git clone --depth 1 https://github.com/foundry-rs/forge-std contracts/lib/forge-std",
     "contracts:build": "forge build --root contracts",
-    "contracts:test": "forge test --root contracts"
+    "contracts:test": "forge test --root contracts",
+    "contracts:node": "anvil --block-time 1 --chain-id 195"
   }
 }
