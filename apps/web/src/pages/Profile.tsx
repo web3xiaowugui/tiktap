@@ -7,17 +7,22 @@ import {
   Check,
   CircleDollarSign,
   Copy,
+  Loader2,
   MessageSquare,
   Trophy,
 } from "lucide-react";
 import {
+  faucet,
   getActivity,
+  getBetTokens,
   getEquityCurve,
   getPositions,
   getProfile,
   getProfileRounds,
+  getWallet,
 } from "@/api";
 import type {
+  BetToken,
   EquityPoint,
   Profile as ProfileType,
   ProfileEvent,
@@ -27,6 +32,9 @@ import type {
 } from "@/api/types";
 import { Avatar } from "@/components/Avatar";
 import { AreaChart } from "@/components/charts/AreaChart";
+import { TokenIcon } from "@/components/TokenIcon";
+import { useAuth } from "@/context/AuthContext";
+import { useBetToken } from "@/context/BetTokenContext";
 import { useToast } from "@/context/ToastContext";
 import { cn } from "@/lib/cn";
 import { fmtSignedUsd, fmtUsd, shortAddress } from "@/lib/format";
@@ -63,6 +71,12 @@ export default function Profile() {
   const positionsState = useApi(() => getPositions(handle), [handle]);
   const activityState = useApi(() => getActivity(handle), [handle]);
   const equityState = useApi(() => getEquityCurve(handle, range), [handle, range]);
+  const profileAddress = profileState.data?.address ?? null;
+  const tokensState = useApi(getBetTokens, []);
+  const walletState = useApi(
+    () => (profileAddress ? getWallet(profileAddress) : Promise.resolve(null)),
+    [profileAddress],
+  );
 
   if (!profileState.data) return <ProfileSkeleton />;
 
@@ -77,6 +91,13 @@ export default function Profile() {
 
         <div className="mt-3 grid grid-cols-1 gap-3 min-[1400px]:grid-cols-[minmax(0,1.13fr)_minmax(0,1fr)]">
           <div className="min-w-0 space-y-3">
+            <BalanceCard
+              address={profileAddress}
+              wallet={walletState.data}
+              tokens={tokensState.data ?? []}
+              loading={walletState.loading}
+              onRefresh={walletState.reload}
+            />
             <EquityCard
               stats={stats}
               equity={equityState.data ?? []}
@@ -262,6 +283,130 @@ const RANGES: Array<{ id: Range; label: string }> = [
   { id: "7d", label: "7天" },
   { id: "30d", label: "30天" },
 ];
+
+type WalletSnapshot = Awaited<ReturnType<typeof getWallet>>;
+
+function fmtBalance(value: number): string {
+  return value.toLocaleString("en-US", { maximumFractionDigits: 4 });
+}
+
+/**
+ * 账户余额：链上下注代币按 mock 价格折成 USD，附带充值 / 提现入口。
+ * 充值走 /api/faucet（演示环境领测试币），提现暂时只给提示。
+ */
+function BalanceCard({
+  address,
+  wallet,
+  tokens,
+  loading,
+  onRefresh,
+}: {
+  address: string | null;
+  wallet: WalletSnapshot | null;
+  tokens: BetToken[];
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  const { user } = useAuth();
+  const { reloadBalances } = useBetToken();
+  const { push } = useToast();
+  const [pending, setPending] = useState(false);
+
+  const isSelf = Boolean(
+    address && user?.address && address.toLowerCase() === user.address.toLowerCase(),
+  );
+
+  const rows = tokens.map((token) => ({
+    token,
+    balance: wallet?.tokens.find((item) => item.symbol === token.symbol)?.balance ?? 0,
+  }));
+  const totalUsd = rows.reduce((sum, row) => sum + row.balance * row.token.priceUsd, 0);
+
+  const recharge = async () => {
+    if (!address || !isSelf || pending) return;
+    setPending(true);
+    try {
+      await faucet({ address, betToken: "TEST", amount: "100" });
+      onRefresh();
+      reloadBalances();
+      push("已充值 100 TEST", "success");
+    } catch (caught) {
+      push(caught instanceof Error ? caught.message : "充值失败，请重试", "error");
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <section className="rounded-lg border border-line bg-panel px-3 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[8.5px] text-muted2">账户余额</div>
+          {loading ? (
+            <div className="skeleton mt-1.5 h-7 w-36 rounded" />
+          ) : address ? (
+            <div className="num mt-0.5 text-[24px] font-semibold leading-none tracking-tight text-white">
+              {wallet ? fmtUsd(totalUsd) : "—"}
+            </div>
+          ) : (
+            <div className="num mt-0.5 text-[24px] font-semibold leading-none tracking-tight text-muted2">
+              —
+            </div>
+          )}
+
+          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+            {address && wallet
+              ? rows.map((row) => (
+                  <span
+                    key={row.token.symbol}
+                    className="inline-flex items-center gap-1 rounded border border-line bg-panel2 px-1.5 py-[3px] text-[8.5px] text-muted"
+                    title={`${row.token.name} 余额`}
+                  >
+                    <TokenIcon icon={row.token.icon} size={13} />
+                    <span className="num text-white">{fmtBalance(row.balance)}</span>
+                    <span className="text-muted2">{row.token.symbol}</span>
+                  </span>
+                ))
+              : null}
+            {!address && (
+              <span className="text-[9px] text-muted2">该用户没有托管账户</span>
+            )}
+            {address && !loading && !wallet && (
+              <span className="text-[9px] text-muted2">余额读取失败</span>
+            )}
+            {address && !isSelf && (
+              <span className="text-[9px] text-muted2">仅本人账户可充值 / 提现</span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (!isSelf) return;
+              push("演示环境：提现暂未开放");
+            }}
+            disabled={!isSelf || pending}
+            className="h-7 rounded-md border border-line px-3 text-[10.5px] font-medium text-muted transition hover:border-line2 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            提现
+          </button>
+          <button
+            type="button"
+            onClick={() => void recharge()}
+            disabled={!isSelf || pending}
+            className="flex h-7 items-center gap-1 rounded-md bg-brand px-3 text-[10.5px] font-semibold text-white transition hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-40"
+            title="演示环境：充值 100 TEST"
+          >
+            {pending && <Loader2 className="h-3 w-3 animate-spin" />}
+            {pending ? "充值中…" : "充值"}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 function EquityCard({
   stats,
@@ -694,6 +839,7 @@ function ProfileSkeleton() {
       </div>
       <div className="mt-3 grid grid-cols-1 gap-3 min-[1400px]:grid-cols-[minmax(0,1.13fr)_minmax(0,1fr)]">
         <div className="space-y-3">
+          <div className="skeleton h-[92px] rounded-lg" />
           <div className="skeleton h-[300px] rounded-lg" />
           <div className="skeleton h-[180px] rounded-lg" />
           <div className="skeleton h-[300px] rounded-lg" />
