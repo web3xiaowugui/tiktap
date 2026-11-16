@@ -10,6 +10,7 @@ import type {
   Holder,
   LeaderboardEntry,
   MarketActivity,
+  MarketOpinion,
   MyBet,
   Position,
   Profile,
@@ -136,6 +137,29 @@ export async function getHolders(
   return request<Holder[]>(
     `/holders${query({ symbol, token: betToken, round: roundStartBlock })}`,
   );
+}
+
+export async function getOpinions(
+  symbol: string,
+  betToken: string,
+  limit = 50,
+): Promise<MarketOpinion[]> {
+  return request<MarketOpinion[]>(
+    `/opinions${query({ symbol, token: betToken, limit })}`,
+  );
+}
+
+export async function postOpinion(input: {
+  address: string;
+  market: string;
+  betToken: string;
+  body: string;
+  side?: "long" | "short" | null;
+}): Promise<MarketOpinion> {
+  return request<MarketOpinion>("/opinions", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export async function getFeed(symbol: string, roundStartBlock?: number): Promise<FeedItem[]> {

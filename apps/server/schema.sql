@@ -114,3 +114,18 @@ CREATE TABLE IF NOT EXISTS quick_amounts (
   amounts    TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+-- 市场级观点；发布时记录当时所在轮次，前端可筛「仅看本轮」
+CREATE TABLE IF NOT EXISTS opinions (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER REFERENCES users(id),
+  address    TEXT NOT NULL,
+  market_id  INTEGER NOT NULL,
+  symbol     TEXT NOT NULL,
+  bet_token  TEXT NOT NULL,
+  round_id   INTEGER,
+  body       TEXT NOT NULL,
+  side       INTEGER,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_opinions_market ON opinions(market_id, created_at);

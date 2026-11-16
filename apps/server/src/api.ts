@@ -24,6 +24,7 @@ import { readConfig } from "./tx.ts";
 import { getRoundPrice } from "./round-prices.ts";
 import { readMarketActivity } from "./activity.ts";
 import { readRoundHolders } from "./holders.ts";
+import { createOpinion, readOpinions } from "./opinions.ts";
 import { listBets } from "./bets.ts";
 import {
   marketFor,
@@ -368,6 +369,48 @@ export function registerRoutes(router: Router, db: Db): void {
     return readRoundHolders(db, row, roundIndexFor(roundStartBlock));
   });
 
+  // ---- 观点（市场级；发布时记录当时轮次）----
+  router.get("/api/opinions", ({ query }) => {
+    const symbol = requireToken(query.get("symbol") ?? "").symbol;
+    const betToken = requireBetToken(query.get("token") ?? "TEST").symbol;
+    const limit = Number(query.get("limit") ?? 50);
+    if (!readConfig().market) return [];
+
+    const row = marketFor(db, symbol, betToken);
+    return readOpinions(db, row, limit);
+  });
+
+  router.post("/api/opinions", async ({ req }) => {
+    const body = await readJson<{
+      address?: string;
+      market?: string;
+      betToken?: string;
+      body?: string;
+      side?: string | null;
+    }>(req);
+    if (!body.address) throw new HttpError(400, "缺少 address");
+    if (!body.market) throw new HttpError(400, "缺少 market");
+    if (!body.betToken) throw new HttpError(400, "缺少 betToken");
+    if (!body.body) throw new HttpError(400, "缺少正文");
+
+    const row = marketFor(db, body.market.toUpperCase(), body.betToken.toUpperCase());
+    const cfg = readConfig();
+    let roundId: number | null = null;
+    if (cfg.market) {
+      try {
+        roundId = (await getRoundInfo(cfg)).currentRound;
+      } catch {
+        roundId = null;
+      }
+    }
+
+    return createOpinion(db, row, {
+      address: body.address,
+      body: body.body,
+      side: body.side ?? null,
+      roundId,
+    });
+  });
   router.get("/api/feed", ({ query }) =>
     feedFor(requireToken(query.get("symbol") ?? "").symbol, readRoundBlock(query)),
   );

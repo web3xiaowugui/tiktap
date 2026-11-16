@@ -257,3 +257,16 @@ export interface AuthUser {
   address?: string;
   chainId?: string;
 }
+/** 市场级观点（一条帖子）。 */
+export interface MarketOpinion {
+  id: string;
+  address: string;
+  name: string;
+  avatar: string;
+  body: string;
+  side: Side | null;
+  /** 发布时所在轮次，前端用来筛「仅看本轮」。 */
+  roundId: number | null;
+  time: string;
+  followed?: boolean;
+}

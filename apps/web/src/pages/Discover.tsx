@@ -12,10 +12,18 @@ import {
   getFeed,
   getHolders,
   getMarketActivity,
+  getOpinions,
+  postOpinion,
   getRoundPrice,
   getToken,
 } from "@/api";
-import type { FeedItem, Holder, MarketActivity, Token } from "@/api/types";
+import type {
+  FeedItem,
+  Holder,
+  MarketActivity,
+  MarketOpinion,
+  Token,
+} from "@/api/types";
 import { Avatar } from "@/components/Avatar";
 import { BetTokenSelector } from "@/components/BetTokenSelector";
 import { CandleChart } from "@/components/charts/CandleChart";
@@ -23,6 +31,7 @@ import { ChartSplitHandle } from "@/components/ChartSplitHandle";
 import { HorizontalResizeHandle } from "@/components/HorizontalResizeHandle";
 import { PoolPanel } from "@/components/PoolPanel";
 import { TokenIcon } from "@/components/TokenIcon";
+import { useAuth } from "@/context/AuthContext";
 import { useBetToken } from "@/context/BetTokenContext";
 import { cn } from "@/lib/cn";
 import { fmtSignedUsd, fmtUsd } from "@/lib/format";
@@ -66,6 +75,7 @@ export default function Discover() {
   );
   const selected =
     rounds.find((round) => round.startBlock === selectedStartBlock) ?? active;
+  const { user } = useAuth();
   const { selected: betToken } = useBetToken();
   // 当前选中轮次的锁定价格（后端已落库），每分钟重取一次以等到新轮写入
   const roundPriceState = useApi(
@@ -87,9 +97,9 @@ export default function Discover() {
     () => getHolders(symbol, betToken?.symbol ?? "TEST", selected.startBlock),
     [symbol, betToken?.symbol, selected.startBlock],
   );
-  const feedState = useApi(
-    () => getFeed(symbol, selected.startBlock),
-    [symbol, selected.startBlock],
+  const opinionsState = useApi(
+    () => getOpinions(symbol, betToken?.symbol ?? "TEST"),
+    [symbol, betToken?.symbol],
   );
   const activityState = useApi(
     () => getMarketActivity(symbol, betToken?.symbol ?? "TEST", selected.startBlock),
@@ -97,12 +107,14 @@ export default function Discover() {
   );
   const reloadActivity = activityState.reload;
   const reloadHolders = holdersState.reload;
+  const reloadOpinions = opinionsState.reload;
 
   /** 下注成功后立刻刷新活动/参与者；结算、自动代领在后台发生，再每 5s 拉一次。 */
   useEffect(() => {
     const refresh = () => {
       reloadActivity();
       reloadHolders();
+      reloadOpinions();
     };
     window.addEventListener("tiktap:activity-refresh", refresh);
     const timer = window.setInterval(refresh, 5_000);
@@ -110,7 +122,7 @@ export default function Discover() {
       window.removeEventListener("tiktap:activity-refresh", refresh);
       window.clearInterval(timer);
     };
-  }, [reloadActivity, reloadHolders]);
+  }, [reloadActivity, reloadHolders, reloadOpinions]);
   const layoutRef = useRef<HTMLDivElement>(null);
   const [bottomHeight, setBottomHeight] = useState(DEFAULT_BOTTOM_HEIGHT);
   const [maxBottomHeight, setMaxBottomHeight] = useState(MAX_BOTTOM_HEIGHT);
@@ -266,10 +278,13 @@ export default function Discover() {
           style={opinionSplitStyle}
         >
           <div className="flex w-full min-h-0 min-w-0 flex-col lg:w-[var(--opinion-split)] lg:shrink-0">
-            <FeedPanel
-              items={feedState.data ?? []}
+            <OpinionsPanel
+              items={opinionsState.data ?? []}
               roundNumber={selected.number}
-              live={selected.status === "betting"}
+              market={symbol}
+              betToken={betToken?.symbol ?? "TEST"}
+              address={user?.address ?? null}
+              onPosted={reloadOpinions}
             />
           </div>
 
@@ -510,68 +525,187 @@ function HoldersTable({
   );
 }
 
-function FeedPanel({
+function OpinionsPanel({
   items,
   roundNumber,
-  live,
+  market,
+  betToken,
+  address,
+  onPosted,
 }: {
-  items: FeedItem[];
+  items: MarketOpinion[];
   roundNumber: number;
-  live: boolean;
+  market: string;
+  betToken: string;
+  address: string | null;
+  onPosted: () => void;
 }) {
-  const [onlyFollowed, setOnlyFollowed] = useState(false);
+  const [onlyRound, setOnlyRound] = useState(false);
+  const [body, setBody] = useState("");
+  const [side, setSide] = useState<"long" | "short" | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const visible = useMemo(
-    () => (onlyFollowed ? items.filter((item) => item.followed) : items),
-    [onlyFollowed, items],
+    () => (onlyRound ? items.filter((item) => item.roundId === roundNumber) : items),
+    [onlyRound, items, roundNumber],
   );
+
+  const canPost = Boolean(address) && body.trim().length > 0 && !pending;
+
+  const submit = async () => {
+    if (!address || !canPost) return;
+    setPending(true);
+    setError(null);
+    try {
+      await postOpinion({
+        address,
+        market,
+        betToken,
+        body: body.trim(),
+        side,
+      });
+      setBody("");
+      setSide(null);
+      onPosted();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "发布失败，请重试");
+    } finally {
+      setPending(false);
+    }
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line px-3">
         <span
           className="relative shrink-0 pb-2.5 pt-2.5 text-[14px] font-medium text-white"
-          title={`第 ${roundNumber} 轮观点`}
+          title={`市场观点 · 当前第 ${roundNumber} 轮`}
         >
           观点{" "}
           <span className="num text-[12px] text-muted2">({visible.length})</span>
           <span className="absolute inset-x-0 bottom-0 h-[1.5px] rounded-full bg-brand" />
         </span>
-        <FollowedFilter
-          active={onlyFollowed}
-          onToggle={() => setOnlyFollowed((value) => !value)}
-        />
-        <span className="ml-auto shrink-0 text-[12px] text-muted2">
-          {live ? "实时" : "历史"}
-        </span>
+
+        <button
+          type="button"
+          onClick={() => setOnlyRound((value) => !value)}
+          className={cn(
+            "rounded-md px-1.5 py-0.5 text-[11px] transition",
+            onlyRound
+              ? "bg-brand/20 text-white"
+              : "bg-panel2 text-muted2 hover:text-white",
+          )}
+        >
+          仅看本轮
+        </button>
+      </div>
+
+      <div className="shrink-0 border-b border-line px-3 py-2.5">
+        {address ? (
+          <>
+            <textarea
+              value={body}
+              onChange={(event) => setBody(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void submit();
+                }
+              }}
+              placeholder="说说你对这个市场的看法…"
+              maxLength={280}
+              rows={2}
+              disabled={pending}
+              className="w-full resize-none rounded-md border border-line2 bg-[#0a0a0c] px-2.5 py-2 text-[12.5px] leading-relaxed text-white outline-none transition placeholder:text-muted2 focus:border-brand/60 disabled:opacity-60"
+            />
+            <div className="mt-2 flex items-center gap-2">
+              {(["long", "short"] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setSide((current) => (current === value ? null : value))}
+                  className={cn(
+                    "rounded-md border px-2 py-0.5 text-[11px] font-medium transition",
+                    side === value
+                      ? value === "long"
+                        ? "border-up/60 bg-up/15 text-up"
+                        : "border-down/60 bg-down/15 text-down"
+                      : "border-line bg-panel text-muted2 hover:text-white",
+                  )}
+                >
+                  {value === "long" ? "看涨" : "看跌"}
+                </button>
+              ))}
+              <span className="num ml-auto text-[10px] text-muted2">
+                {body.length}/280
+              </span>
+              <button
+                type="button"
+                onClick={() => void submit()}
+                disabled={!canPost}
+                className="rounded-md bg-white px-3 py-1 text-[11.5px] font-semibold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {pending ? "发布中…" : "发布"}
+              </button>
+            </div>
+            {error && <p className="mt-1.5 text-[11px] text-down">{error}</p>}
+          </>
+        ) : (
+          <p className="text-[11px] text-muted2">登录后可以发布观点</p>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {visible.length === 0 && (
           <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-1 text-[13px] text-muted2">
-            <p>没有符合条件的观点</p>
-            <button
-              type="button"
-              onClick={() => setOnlyFollowed(false)}
-              className="text-[12px] font-medium text-brand2 hover:underline"
-            >
-              清除筛选
-            </button>
+            <p>{onlyRound ? "本轮还没有观点" : "这个市场还没有观点"}</p>
+            {onlyRound && (
+              <button
+                type="button"
+                onClick={() => setOnlyRound(false)}
+                className="text-[12px] font-medium text-brand2 hover:underline"
+              >
+                看全部观点
+              </button>
+            )}
           </div>
         )}
 
         {visible.map((item) => (
           <div
             key={item.id}
-            className="grid grid-cols-[128px_minmax(0,1fr)] items-center gap-3 border-b border-line/50 px-3 py-2.5 transition hover:bg-white/[0.07]"
+            className="border-b border-line/50 px-3 py-2.5 transition hover:bg-white/[0.07]"
           >
-            <div className="flex min-w-0 items-center gap-2">
-              <Avatar name={item.name} gradient={item.avatar} size={28} />
-              <div className="truncate text-[14px] font-medium text-white">
+            <div className="flex items-center gap-2">
+              <Avatar name={item.name} gradient={item.avatar} size={24} />
+              <span className="truncate text-[13px] font-medium text-white">
                 {item.name}
-              </div>
+              </span>
+              {item.side && (
+                <span
+                  className={cn(
+                    "rounded px-1.5 py-0.5 text-[10px] font-medium",
+                    item.side === "long"
+                      ? "bg-up/15 text-up"
+                      : "bg-down/15 text-down",
+                  )}
+                >
+                  {item.side === "long" ? "看涨" : "看跌"}
+                </span>
+              )}
+              {item.roundId !== null && (
+                <span className="num shrink-0 text-[10px] text-muted2">
+                  第 {item.roundId} 轮
+                </span>
+              )}
+              <span className="num ml-auto shrink-0 text-[10px] text-muted2">
+                {item.time}
+                {item.time === "刚刚" ? "" : "前"}
+              </span>
             </div>
-            <p className="min-w-0 break-words text-[13px] leading-relaxed text-muted">
-              {item.content ?? "—"}
+            <p className="mt-1 whitespace-pre-wrap break-words pl-[32px] text-[12.5px] leading-relaxed text-muted">
+              {item.body}
             </p>
           </div>
         ))}

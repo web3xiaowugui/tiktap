@@ -43,7 +43,7 @@ export function formatAmount(amountWei: string): string {
   return fixed === "" ? "0" : fixed;
 }
 
-function relativeTime(timestamp: number): string {
+export function relativeTime(timestamp: number): string {
   const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
   if (minutes < 1) return "刚刚";
   if (minutes < 60) return `${minutes}分钟`;
