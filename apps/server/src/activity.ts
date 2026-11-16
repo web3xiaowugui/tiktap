@@ -122,6 +122,7 @@ export function readMarketActivity(
         id: `bet:${bet.tx_hash}`,
         kind: "bet",
         name: displayName(bet),
+        address: bet.address,
         avatar: gradientFor(bet.address),
         side: bet.side === SIDE_DOWN ? "short" : "long",
         amount: `${formatAmount(bet.amount_wei)} ${bet.bet_token}`,
@@ -189,6 +190,7 @@ export function readMarketActivity(
           x_name: tx.x_name,
           x_handle: tx.x_handle,
         }),
+        address: tx.address,
         avatar: gradientFor(tx.address),
         side: null,
         amount: payload.amountWei

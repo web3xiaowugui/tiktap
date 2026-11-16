@@ -4,8 +4,9 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Info } from "lucide-react";
 import {
   getBetPool,
@@ -65,6 +66,32 @@ const LIVE_TIMEFRAMES: Array<{ id: LiveTimeframe; label: string }> = [
   { id: "30s", label: "30秒" },
   { id: "1m", label: "1分" },
 ];
+
+/** 观点 / 活动 / 参与者里的头像和昵称：有托管地址就跳到个人主页。 */
+function ProfileLink({
+  address,
+  className,
+  children,
+}: {
+  address?: string | null;
+  className?: string;
+  children: ReactNode;
+}) {
+  if (!address) return <div className={className}>{children}</div>;
+  return (
+    <Link
+      to={`/u/${address}`}
+      title="查看个人主页"
+      className={cn(
+        "rounded transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/60",
+        className,
+      )}
+      onClick={(event) => event.stopPropagation()}
+    >
+      {children}
+    </Link>
+  );
+}
 
 export default function Discover() {
   const [params] = useSearchParams();
@@ -502,12 +529,15 @@ function HoldersTable({
                   : "grid-cols-[128px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.05fr)_minmax(0,0.85fr)]",
               )}
             >
-              <div className="flex min-w-0 items-center gap-2">
+              <ProfileLink
+                address={holder.address}
+                className="flex min-w-0 items-center gap-2"
+              >
                 <Avatar name={holder.name} gradient={holder.avatar} size={28} />
                 <div className="truncate text-[14px] font-medium text-white">
                   {holder.name}
                 </div>
-              </div>
+              </ProfileLink>
 
               <div className="num truncate text-center text-[14px] text-white">
                 {holder.longCount > 0
@@ -705,10 +735,15 @@ function OpinionsPanel({
             className="border-b border-line/50 px-3 py-2.5 transition hover:bg-white/[0.07]"
           >
             <div className="flex items-center gap-2">
-              <Avatar name={item.name} gradient={item.avatar} size={24} />
-              <span className="truncate text-[13px] font-medium text-white">
-                {item.name}
-              </span>
+              <ProfileLink
+                address={item.address}
+                className="flex min-w-0 items-center gap-2"
+              >
+                <Avatar name={item.name} gradient={item.avatar} size={24} />
+                <span className="truncate text-[13px] font-medium text-white">
+                  {item.name}
+                </span>
+              </ProfileLink>
               {item.side && (
                 <span
                   className={cn(
@@ -807,7 +842,10 @@ function ActivityPanel({
               className="grid grid-cols-[148px_minmax(0,0.55fr)_minmax(0,1fr)_minmax(0,0.6fr)] items-center gap-2 border-b border-line/50 px-3 py-2 transition hover:bg-white/[0.07]"
               title={`tx ${item.txHash}`}
             >
-              <div className="flex min-w-0 items-center gap-2">
+              <ProfileLink
+                address={item.address}
+                className="flex min-w-0 items-center gap-2"
+              >
                 <Avatar name={item.name} gradient={item.avatar} size={26} />
                 <div className="min-w-0">
                   <div className="truncate text-[14px] font-medium text-white">
@@ -817,7 +855,7 @@ function ActivityPanel({
                     {item.txHash.slice(0, 8)}…{item.txHash.slice(-6)}
                   </div>
                 </div>
-              </div>
+              </ProfileLink>
               <div
                 className={cn(
                   "truncate text-[14px] font-medium",

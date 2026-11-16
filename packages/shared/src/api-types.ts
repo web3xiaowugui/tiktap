@@ -152,6 +152,8 @@ export interface MarketActivity {
   kind: ActivityKind;
   name: string;
   avatar: string;
+  /** 触发这条活动的托管地址；系统结算没有地址，头像不可点。 */
+  address?: string;
   /** 下注方向 / 开奖结果；领取事件没有方向。 */
   side: Side | null;
   /** 带单位的金额，例如 "10 TEST"；结算事件为空串。 */
