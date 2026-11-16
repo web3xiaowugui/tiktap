@@ -1,0 +1,33 @@
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+apps/*/dist/
+
+# env & secrets
+.env
+.env.local
+*.pem
+*.key
+
+# local database
+data/
+
+# foundry
+contracts/out/
+contracts/cache/
+contracts/lib/
+broadcast/
+
+# editor / os
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# logs & temp
+*.log
+*.tmp
+*.tmpdir/
+shots/tmp/

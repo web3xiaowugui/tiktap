@@ -1,0 +1,225 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans:
+    "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+
+  --color-ink: #08080a;
+  --color-panel: #101014;
+  --color-panel2: #16161c;
+  --color-panel3: #1c1c24;
+  --color-line: #212129;
+  --color-line2: #2c2c36;
+  --color-muted: #8b8b97;
+  --color-muted2: #61616d;
+  --color-brand: #6f5cf5;
+  --color-brand2: #9284ff;
+  --color-up: #2ebd85;
+  --color-down: #f6465d;
+}
+
+:root {
+  color-scheme: dark;
+  --ticker-h: 28px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-ink);
+  color: #f2f2f5;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2a2a33 transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2a33;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a46;
+}
+
+::selection {
+  background: rgba(111, 92, 245, 0.35);
+}
+
+button {
+  cursor: pointer;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.hairline-b {
+  box-shadow: inset 0 -1px 0 var(--color-line);
+}
+
+/* Range slider ------------------------------------------------------------- */
+input[type="range"].fomo-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 3px;
+  border-radius: 999px;
+  outline: none;
+}
+input[type="range"].fomo-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #f4f4f8;
+  border: 2px solid #6f5cf5;
+  box-shadow: 0 0 0 3px rgba(111, 92, 245, 0.16);
+  cursor: pointer;
+}
+input[type="range"].fomo-range::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #f4f4f8;
+  border: 2px solid #6f5cf5;
+  cursor: pointer;
+}
+
+/* Animations --------------------------------------------------------------- */
+@keyframes fomo-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(-2deg);
+  }
+  50% {
+    transform: translate3d(0, -16px, 0) rotate(2deg);
+  }
+}
+@keyframes fomo-float-soft {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -9px, 0);
+  }
+}
+@keyframes fomo-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes fomo-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+@keyframes fomo-shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+@keyframes fomo-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.animate-fade-up {
+  animation: fomo-fade-up 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.animate-scale-in {
+  animation: fomo-scale-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.animate-float {
+  animation: fomo-float 8s ease-in-out infinite;
+}
+.animate-float-soft {
+  animation: fomo-float-soft 6s ease-in-out infinite;
+}
+.animate-pulse-dot {
+  animation: fomo-pulse 2.2s ease-in-out infinite;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #15151b 0%, #20202a 40%, #15151b 80%);
+  background-size: 800px 100%;
+  animation: fomo-shimmer 1.5s linear infinite;
+}
+
+/* Landing helpers ---------------------------------------------------------- */
+.landing-grid {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse at center, black 10%, transparent 72%);
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+/* Minimum readable type size ------------------------------------------------ */
+/* No UI copy should render below 12px. Keep this as the global floor so new
+   small labels cannot regress the dense trading screens. */
+.app-ui :where(
+  [class*="text-[7px]"],
+  [class*="text-[7.5px]"],
+  [class*="text-[8px]"],
+  [class*="text-[8.5px]"],
+  [class*="text-[9px]"],
+  [class*="text-[9.5px]"],
+  [class*="text-[10px]"],
+  [class*="text-[10.5px]"],
+  [class*="text-[11px]"],
+  [class*="text-[11.5px]"],
+) {
+  font-size: 12px !important;
+}
