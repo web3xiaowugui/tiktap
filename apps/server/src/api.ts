@@ -323,17 +323,16 @@ export function registerRoutes(router: Router, db: Db): void {
     provider: "demo",
   }));
 
-  router.post("/api/auth/okx", async ({ req }) => {
-    const body = await readJson<{ address?: string; chainId?: string }>(req);
-    if (!body.address) throw new HttpError(400, "缺少钱包地址");
+  router.post("/api/auth/x", async ({ req }) => {
+    const body = await readJson<{ handle?: string }>(req);
+    const raw = (body.handle ?? "").trim().replace(/^@+/, "").toLowerCase();
+    const handle = /^[a-z0-9_]{2,20}$/.test(raw) ? raw : DEMO_PROFILE.handle;
 
     return {
-      name: DEMO_PROFILE.name,
-      handle: DEMO_PROFILE.handle,
-      email: "",
-      provider: "okx",
-      address: body.address,
-      chainId: body.chainId,
+      name: handle,
+      handle,
+      email: `${handle}@x.demo`,
+      provider: "x",
     };
   });
 

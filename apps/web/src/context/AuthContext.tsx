@@ -7,9 +7,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { createUser, getUser, signInAsDemo, signInWithOkx, signOut as signOutRequest } from "@/api";
+import { createUser, getUser, signInAsDemo, signInWithX, signOut as signOutRequest } from "@/api";
 import type { AuthUser } from "@/api/types";
-import { connectOkxWallet } from "@/lib/okxWallet";
+
 
 const STORAGE_KEY = "fomo.demo.auth.v2";
 /** 托管地址单独存一份，换账号登录也不会丢。 */
@@ -17,7 +17,7 @@ const ADDRESS_KEY = "tiktap.custody.address.v1";
 
 interface AuthContextValue {
   user: AuthUser | null;
-  connectOkx: () => Promise<AuthUser>;
+  connectX: (handle: string) => Promise<AuthUser>;
   signInDemo: () => Promise<AuthUser>;
   signOut: () => Promise<void>;
 }
@@ -69,7 +69,7 @@ function readInitialUser(): AuthUser | null {
         parsed &&
         typeof parsed.name === "string" &&
         typeof parsed.handle === "string" &&
-        (parsed.provider === "okx" || parsed.provider === "demo")
+        (parsed.provider === "x" || parsed.provider === "demo")
       ) {
         return parsed as AuthUser;
       }
@@ -137,11 +137,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [remember],
   );
 
-  const connectOkx = useCallback(async () => {
-    const account = await connectOkxWallet();
-    const nextUser = await signInWithOkx(account.address, account.chainId);
-    return withCustody(nextUser);
-  }, [withCustody]);
+  const connectX = useCallback(
+    async (handle: string) => {
+      const nextUser = await signInWithX(handle);
+      return withCustody(nextUser);
+    },
+    [withCustody],
+  );
 
   const signInDemo = useCallback(async () => {
     const nextUser = await signInAsDemo();
@@ -159,8 +161,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, connectOkx, signInDemo, signOut }),
-    [user, connectOkx, signInDemo, signOut],
+    () => ({ user, connectX, signInDemo, signOut }),
+    [user, connectX, signInDemo, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

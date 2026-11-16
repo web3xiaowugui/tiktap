@@ -240,10 +240,10 @@ export async function faucet(input: {
   return request("/faucet", { method: "POST", body: JSON.stringify(input) });
 }
 
-export async function signInWithOkx(address: string, chainId?: string): Promise<AuthUser> {
-  return request<AuthUser>("/auth/okx", {
+export async function signInWithX(handle: string): Promise<AuthUser> {
+  return request<AuthUser>("/auth/x", {
     method: "POST",
-    body: JSON.stringify({ address, chainId }),
+    body: JSON.stringify({ handle }),
   });
 }
 

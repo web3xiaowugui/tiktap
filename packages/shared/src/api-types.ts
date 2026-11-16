@@ -234,7 +234,7 @@ export interface LeaderboardEntry {
   pnlPct: number;
 }
 
-export type AuthProvider = "okx" | "demo";
+export type AuthProvider = "x" | "demo";
 
 export interface AuthUser {
   name: string;

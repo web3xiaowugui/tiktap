@@ -109,13 +109,13 @@ export function TopBar() {
                     {user?.name ?? "访客"}
                   </div>
                   <div className="truncate text-[10px] text-muted2">@{user?.handle ?? "guest"}</div>
-                  {user?.provider === "okx" && user.address && (
+                  {user?.provider === "x" && user.address && (
                     <div
                       className="mt-1 flex items-center gap-1 text-[9px] text-muted2"
                       title={user.address}
                     >
-                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#f7931a]" />
-                      <span className="truncate">OKX Wallet · {shortAddress(user.address)}</span>
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand2" />
+                      <span className="truncate">托管账户 · {shortAddress(user.address)}</span>
                     </div>
                   )}
                 </div>

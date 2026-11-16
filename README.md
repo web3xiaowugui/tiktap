@@ -57,7 +57,7 @@ curl http://127.0.0.1:8787/api/health
 | GET | `/api/holdings?address` | 我的持仓（配了合约只返回当前轮 + 上一轮还没开奖的仓位） |
 | GET | `/api/profiles/:handle` `+ /positions` `+ /activity` | 个人主页三块 |
 | GET | `/api/profiles/:handle/equity?range=24h\|7d\|30d` | 组合曲线 |
-| POST | `/api/auth/demo` `/api/auth/okx` `/api/auth/signout` | 登录 / 登出 |
+| POST | `/api/auth/x` `/api/auth/demo` `/api/auth/signout` | 登录（X 账号 / 演示）/ 登出 |
 
 模拟数据在后端 `apps/server/src/data/mockData.ts`（原前端文件整体搬入），要改数值只改这一处。
 
@@ -91,7 +91,7 @@ POST /api/bet
 
 | 界面动作 | 实际调用 |
 | --- | --- |
-| 登录（OKX 或演示账号） | 先复用 localStorage 里的托管地址，查不到就 `POST /api/users` 建号；地址写回会话 |
+| 登录（X 账号或演示账号） | 先复用 localStorage 里的托管地址，查不到就 `POST /api/users` 建号；地址写回会话 |
 | 可用余额 / 代币列表 | `GET /api/wallet/:address` → 覆盖 `/api/bet-tokens` 里的 mock 余额 |
 | 「领币」 | `POST /api/faucet`（每地址有 mint 上限，gas 从用户地址出） |
 | Tap涨 / Tap跌 | `POST /api/bet`（`address` + URL 上的 `?symbol=` + 选中的下注代币 + 输入金额）；提交中按钮置灰，封盘后禁用并提示 |
