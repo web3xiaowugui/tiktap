@@ -50,12 +50,14 @@ function PoolPanelBody({
   selectedStartBlock?: number;
   onSelect?: (round: TimelineRound) => void;
 }) {
-  const rounds = getTimelineRounds(block);
+  const clock = useChainClock();
+  const rounds = getTimelineRounds(block, clock.anchor);
   const active =
-    rounds.find((round) => round.status === "betting") ?? rounds[0]!;
+    rounds.find((round) => round.status === "betting") ??
+    rounds.find((round) => round.startBlock <= block && block < round.settleBlock) ??
+    rounds[0]!;
   const selected =
     rounds.find((round) => round.startBlock === selectedStartBlock) ?? active;
-  const clock = useChainClock();
   const poolState = useApi(
     () => getBetPool(symbol, betToken.symbol, selected.startBlock),
     [symbol, betToken.symbol, selected.startBlock, clock.version],

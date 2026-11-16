@@ -57,7 +57,9 @@ export default function Discover() {
   const block = clock.block;
   const rounds = getTimelineRounds(block, clock.anchor);
   const active =
-    rounds.find((round) => round.status === "betting") ?? rounds[0]!;
+    rounds.find((round) => round.status === "betting") ??
+    rounds.find((round) => round.startBlock <= block && block < round.settleBlock) ??
+    rounds[0]!;
   const [selectedStartBlock, setSelectedStartBlock] = useState<number | null>(
     null,
   );

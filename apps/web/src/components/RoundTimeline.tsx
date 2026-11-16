@@ -7,6 +7,7 @@ import {
   type RoundStatus,
   type TimelineRound,
 } from "@/lib/rounds";
+import { useChainClock } from "@/lib/chainClock";
 
 const STATUS: Record<
   RoundStatus,
@@ -47,7 +48,8 @@ export function RoundTimeline({
   selectedStartBlock?: number;
   onSelect?: (round: TimelineRound) => void;
 }) {
-  const rounds = getTimelineRounds(block);
+  const clock = useChainClock();
+  const rounds = getTimelineRounds(block, clock.anchor);
   const trackRef = useRef<HTMLDivElement>(null);
   const [trackWidth, setTrackWidth] = useState(0);
 

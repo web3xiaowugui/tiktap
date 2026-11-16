@@ -48,12 +48,13 @@ curl http://127.0.0.1:8787/api/health
 | GET | `/api/sidebar-menu` | 侧栏一级 Tab 与二级分类 |
 | GET | `/api/leaderboard` | 排行榜 |
 | GET | `/api/markets` | 市场表（标的×下注代币 → marketId） |
-| GET | `/api/pools?market&token&round` | 涨/跌池、人数、获胜方、marketId |
-| GET | `/api/my-bet?market&token&round` | 我在本轮的仓位（可为 `null`） |
+| GET | `/api/pools?market&token&round` | 涨/跌池、人数、获胜方、marketId（配了合约读链上 `pools`） |
+| GET | `/api/my-bet?market&token&round&address` | 我在本轮的仓位、可领金额（配了合约读链上 `stakeOf`/`previewClaim`） |
+| GET | `/api/wallet/:address` | 原生币 + 三个下注代币的真实余额 |
 | GET/PUT | `/api/quick-amounts/:symbol` | 5 个快捷金额（存 SQLite） |
 | GET | `/api/candles?symbol&timeframe` | 预算好的 K 线（确定性生成；1m 实时行情由前端直连 OKX，见下） |
 | GET | `/api/holders` `feed` `activity` | 持有人 / 动态 / 成交（按 symbol+round） |
-| GET | `/api/holdings` | 我的持仓 |
+| GET | `/api/holdings?address` | 我的持仓（配了合约只返回当前轮 + 上一轮还没开奖的仓位） |
 | GET | `/api/profiles/:handle` `+ /positions` `+ /activity` | 个人主页三块 |
 | GET | `/api/profiles/:handle/equity?range=24h\|7d\|30d` | 组合曲线 |
 | POST | `/api/auth/demo` `/api/auth/okx` `/api/auth/signout` | 登录 / 登出 |
@@ -85,6 +86,21 @@ POST /api/bet
 
 `side` 取 `long` / `short`；`amount` 是按代币单位（18 位小数）的字符串，后端用 `parseUnits` 转 wei。
 同一个地址的写操作串行排队（`withAddressLock`），并发请求不会撞 nonce。
+
+#### 前端怎么连（全部已接通）
+
+| 界面动作 | 实际调用 |
+| --- | --- |
+| 登录（OKX 或演示账号） | 先复用 localStorage 里的托管地址，查不到就 `POST /api/users` 建号；地址写回会话 |
+| 可用余额 / 代币列表 | `GET /api/wallet/:address` → 覆盖 `/api/bet-tokens` 里的 mock 余额 |
+| 「领币」 | `POST /api/faucet`（每地址有 mint 上限，gas 从用户地址出） |
+| Tap涨 / Tap跌 | `POST /api/bet`（`address` + URL 上的 `?symbol=` + 选中的下注代币 + 输入金额）；提交中按钮置灰，封盘后禁用并提示 |
+| 池子数字 / 人数 | `GET /api/pools` → 链上 `pools(round, marketId)`；人数从 `txs` 统计（合约只存金额，不存地址列表） |
+| 我的下注 / 收到多少 / 领取 | `GET /api/my-bet` → `stakeOf` + `previewClaim` + `claimed`；几千块后出现「领取」按钮走 `POST /api/claim` |
+| 我的持仓 | `GET /api/holdings?address` → 只列当前轮（下注中）和上一轮（待开奖）的仓位，已开奖的不在这里 |
+| 轮次 / 倒计时 / 封盘 | `GET /api/round`（每 4s 轮询一次，块高用本地时钟外推）；网格按合约的 `anchor + 600n` 算，不再用前端 mock 的 anchor |
+
+K 线仍是浏览器直连 OKX（见上），行情不进后端。观点 / 动态 / 持有人 / 排行榜 / 个人主页仍是后端 mock 数据，还没上链、也没进 SQLite。
 
 #### 结算怎么判涨跌
 
