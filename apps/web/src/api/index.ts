@@ -174,13 +174,9 @@ export async function signOut(): Promise<void> {
   await request<{ ok: boolean }>("/auth/signout", { method: "POST", body: "{}" });
 }
 
-/** Live TradingView chart data：后端代理 OKX 公共接口（1m 只有一种）。 */
-export type LiveTimeframe = "1m";
-
-export async function getLiveCandles(
-  symbol: string,
-  timeframe: LiveTimeframe = "1m",
-  limit?: number,
-): Promise<Candle[]> {
-  return request<Candle[]>(`/live-candles${query({ symbol, timeframe, limit })}`);
-}
+/**
+ * Live TradingView chart data：客户端直连 OKX 公共接口。
+ * 免费额度按用户 IP 分摊，不压我们的服务器，也不需要在服务端存 K 线。
+ */
+export { getLiveCandles } from "./liveMarket";
+export type { LiveTimeframe } from "./liveMarket";

@@ -50,8 +50,7 @@ curl http://127.0.0.1:8787/api/health
 | GET | `/api/pools?market&token&round` | 涨/跌池、人数、获胜方 |
 | GET | `/api/my-bet?market&token&round` | 我在本轮的仓位（可为 `null`） |
 | GET/PUT | `/api/quick-amounts/:symbol` | 5 个快捷金额（存 SQLite） |
-| GET | `/api/candles?symbol&timeframe` | 预算好的 K 线（确定性生成） |
-| GET | `/api/live-candles?symbol&timeframe&limit` | 后端代理 OKX 公共 1m 行情 |
+| GET | `/api/candles?symbol&timeframe` | 预算好的 K 线（确定性生成；1m 实时行情由前端直连 OKX，见下） |
 | GET | `/api/holders` `feed` `activity` | 持有人 / 动态 / 成交（按 symbol+round） |
 | GET | `/api/holdings` | 我的持仓 |
 | GET | `/api/profiles/:handle` `+ /positions` `+ /activity` | 个人主页三块 |
@@ -59,6 +58,9 @@ curl http://127.0.0.1:8787/api/health
 | POST | `/api/auth/demo` `/api/auth/okx` `/api/auth/signout` | 登录 / 登出 |
 
 模拟数据在后端 `apps/server/src/data/mockData.ts`（原前端文件整体搬入），要改数值只改这一处。
+
+**K 线是例外**：1m 实时行情由浏览器直连 OKX 公共接口（`apps/web/src/api/liveMarket.ts`）。免费额度按用户 IP 分摊，服务端既不吃额度也不需要存 K 线；`/api/candles` 只提供确定性生成的演示数据。
+
 登录态仍存在浏览器 localStorage（前端会话，不含敏感信息）；链上写操作（下注 / 领取）这一版还没有接口，等合约和托管钱包接通后再加。
 
 ### 合约

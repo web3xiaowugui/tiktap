@@ -1,4 +1,4 @@
-import type { Candle } from "../../../../packages/shared/src/api-types.ts";
+import type { Candle } from "./types";
 
 export type LiveTimeframe = "1m";
 

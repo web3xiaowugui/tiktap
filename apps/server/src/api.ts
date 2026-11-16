@@ -1,6 +1,5 @@
 import { readJson, HttpError, type Router } from "./http.ts";
 import type { Db } from "./db.ts";
-import { getLiveCandles } from "./data/liveMarket.ts";
 import {
   activityFor,
   BET_QUICK_AMOUNTS,
@@ -119,14 +118,6 @@ export function registerRoutes(router: Router, db: Db): void {
     const token = requireToken(query.get("symbol") ?? "");
     const timeframe = (query.get("timeframe") ?? "1m") as Timeframe;
     return makeCandles(token, timeframe);
-  });
-
-  router.get("/api/live-candles", async ({ query }) => {
-    const symbol = requireToken(query.get("symbol") ?? "").symbol;
-    const timeframe = query.get("timeframe") ?? "1m";
-    if (timeframe !== "1m") throw new HttpError(400, "当前仅支持 1 分钟 K 线");
-    const limit = Number(query.get("limit") ?? 300);
-    return getLiveCandles(symbol, "1m", limit);
   });
 
   // ---- 市场面板 ----
