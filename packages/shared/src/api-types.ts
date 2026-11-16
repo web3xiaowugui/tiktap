@@ -216,7 +216,27 @@ export interface Badge {
   tone: "gold" | "green" | "purple" | "neutral";
 }
 
-/** 个人主页统计：按「地址 × 市场 × 轮次」从 bets 聚合，金额统一折成 USD。 */
+/** 单个下注代币的个人统计（金额用该代币数量，不再折 USD）。 */
+export interface ProfileTokenStats {
+  symbol: string;
+  /** 总下注额（代币数量）。 */
+  volume: number;
+  /** 已结算累计盈亏（代币数量，未结算和退款轮不计）。 */
+  pnl: number;
+  /** 已结算累计盈亏折 USD，仅用于排序 / 兼容旧展示。 */
+  pnlUsd: number;
+  bets: number;
+  rounds: number;
+  wonRounds: number;
+  lostRounds: number;
+  drawRounds: number;
+  settledRounds: number;
+  openRounds: number;
+  /** 胜率（0–100，按已分胜负的轮次算）。 */
+  winRate: number;
+}
+
+/** 个人主页统计：按「地址 × 市场 × 轮次」从 bets 聚合；汇总保留 USD，同时按代币拆开。 */
 export interface ProfileStats {
   /** 参与过的轮次数（市场 × 轮次去重）。 */
   rounds: number;
@@ -236,6 +256,8 @@ export interface ProfileStats {
   settledRounds: number;
   /** 还没结算的轮次。 */
   openRounds: number;
+  /** 按下注代币拆开的统计，顺序为 OKB / BEM / TEST。 */
+  byToken: ProfileTokenStats[];
 }
 
 export type ProfileRoundStatus = "open" | "settled" | "claimed" | "refunded";

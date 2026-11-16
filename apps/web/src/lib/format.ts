@@ -56,6 +56,29 @@ export function fmtQty(value: number, digits = 2): string {
   });
 }
 
+/** 代币余额 / 数量：不强制补零，最多 4 位小数。 */
+export function fmtTokenAmount(value: number, digits = 4): string {
+  return value.toLocaleString("en-US", {
+    maximumFractionDigits: digits,
+  });
+}
+
+/** 带符号的代币盈亏，例如 "+1.25 TEST"、"0 TEST"。 */
+export function fmtSignedToken(value: number, symbol: string, digits = 4): string {
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}${fmtTokenAmount(Math.abs(value), digits)} ${symbol}`;
+}
+
+const tokenCompactFormatter = new Intl.NumberFormat("en-US", {
+  notation: "compact",
+  maximumFractionDigits: 3,
+});
+
+/** 图表 Y 轴用：代币数量缩写，保留 3 位小数。 */
+export function fmtCompactToken(value: number): string {
+  return tokenCompactFormatter.format(value);
+}
+
 export function shortAddress(address: string, head = 6, tail = 4): string {
   if (address.length <= head + tail + 1) return address;
   return `${address.slice(0, head)}…${address.slice(-tail)}`;

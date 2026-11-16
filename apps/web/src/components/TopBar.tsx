@@ -1,24 +1,29 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { LogOut, Search, Settings, Trophy, User, Wallet } from "lucide-react";
+import { LogOut, Search, Settings, Trophy, User } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { FaucetButton } from "@/components/FaucetButton";
 import { Logo } from "@/components/Logo";
 import { SearchDialog, useSearchHotkey } from "@/components/SearchDialog";
+import { TokenIcon } from "@/components/TokenIcon";
 import { useAuth } from "@/context/AuthContext";
+import { useBetToken } from "@/context/BetTokenContext";
 import { useToast } from "@/context/ToastContext";
 import { cn } from "@/lib/cn";
-import { shortAddress } from "@/lib/format";
+import { fmtTokenAmount, shortAddress } from "@/lib/format";
+import { orderBalanceTokens } from "@/lib/tokenOrder";
 
 const DEMO_AVATAR = "linear-gradient(135deg,#5eead4,#2563eb 55%,#4c1d95)";
 
 export function TopBar() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const { tokens } = useBetToken();
   const { push } = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const balanceTokens = orderBalanceTokens(tokens);
 
   const openSearch = useCallback(() => setSearchOpen(true), []);
   useSearchHotkey(openSearch);
@@ -71,9 +76,20 @@ export function TopBar() {
       <div className="flex shrink-0 items-center gap-2.5">
         <FaucetButton />
 
-        <span className="hidden items-center gap-1.5 sm:flex">
-          <Wallet className="h-3.5 w-3.5 text-muted2" />
-          <span className="num text-[11.5px] text-white">$0.00</span>
+        <span className="hidden items-center gap-2.5 lg:flex">
+          {balanceTokens.map((token) => (
+            <span
+              key={token.symbol}
+              className="flex items-center gap-1"
+              title={`${token.name} 余额`}
+            >
+              <TokenIcon icon={token.icon} size={13} />
+              <span className="num text-[10.5px] text-white">
+                {fmtTokenAmount(token.balance)}
+              </span>
+              <span className="text-[9px] text-muted2">{token.symbol}</span>
+            </span>
+          ))}
         </span>
 
         <div ref={menuRef} className="relative">

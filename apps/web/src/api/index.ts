@@ -220,9 +220,13 @@ export async function getActivity(handle: string, limit = 100): Promise<ProfileE
   );
 }
 
-export async function getEquityCurve(handle: string, range: Range): Promise<EquityPoint[]> {
+export async function getEquityCurve(
+  handle: string,
+  range: Range,
+  token: string,
+): Promise<EquityPoint[]> {
   return request<EquityPoint[]>(
-    `/profiles/${encodeURIComponent(handle)}/equity${query({ range })}`,
+    `/profiles/${encodeURIComponent(handle)}/equity${query({ range, token })}`,
   );
 }
 

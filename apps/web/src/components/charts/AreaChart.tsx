@@ -7,15 +7,18 @@ import {
   useState,
 } from "react";
 import type { EquityPoint, Range } from "@/api/types";
-import { fmtCompactUsd, fmtEquityTime, fmtUsd } from "@/lib/format";
+import { fmtCompactToken, fmtEquityTime, fmtSignedToken } from "@/lib/format";
 
 export function AreaChart({
   data,
   range,
+  token,
   className,
 }: {
   data: EquityPoint[];
   range: Range;
+  /** 曲线和数值都以这个代币计价。 */
+  token: string;
   className?: string;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -145,7 +148,7 @@ export function AreaChart({
               strokeDasharray="2 5"
             />
             <text x={width - pad.right + 6} y={tick.y + 3} fontSize="8.5" fill="#5f5f6c">
-              {fmtCompactUsd(tick.value)}
+              {fmtCompactToken(tick.value)}
             </text>
           </g>
         ))}
@@ -217,7 +220,9 @@ export function AreaChart({
             top: 4,
           }}
         >
-          <div className="num text-[11px] font-semibold text-white">{fmtUsd(hoveredPoint.v)}</div>
+          <div className="num text-[11px] font-semibold text-white">
+            {fmtSignedToken(hoveredPoint.v, token)}
+          </div>
           <div className="text-[8.5px] text-muted2">
             {fmtEquityTime(hoveredPoint.t, range)}
           </div>

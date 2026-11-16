@@ -474,8 +474,11 @@ export function registerRoutes(router: Router, db: Db): void {
     const raw = query.get("range") ?? "24h";
     const ranges: Range[] = ["24h", "7d", "30d"];
     if (!ranges.includes(raw as Range)) throw new HttpError(400, `未知区间：${raw}`);
+    const rawToken = query.get("token");
+    if (!rawToken) throw new HttpError(400, "缺少 token 参数");
+    const betToken = requireBetToken(rawToken.toUpperCase()).symbol;
     const user = findProfileUser(db, params.handle);
-    return user ? readProfileEquity(db, user.address, raw as Range) : [];
+    return user ? readProfileEquity(db, user.address, raw as Range, betToken) : [];
   });
 
   // ---- 登录 ----

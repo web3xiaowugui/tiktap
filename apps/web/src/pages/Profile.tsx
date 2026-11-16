@@ -28,6 +28,7 @@ import type {
   ProfileEvent,
   ProfileRound,
   ProfileStats,
+  ProfileTokenStats,
   Range,
 } from "@/api/types";
 import { Avatar } from "@/components/Avatar";
@@ -37,8 +38,28 @@ import { useAuth } from "@/context/AuthContext";
 import { useBetToken } from "@/context/BetTokenContext";
 import { useToast } from "@/context/ToastContext";
 import { cn } from "@/lib/cn";
-import { fmtSignedUsd, fmtUsd, shortAddress } from "@/lib/format";
+import { fmtSignedToken, fmtTokenAmount, fmtUsd, shortAddress } from "@/lib/format";
+import { orderBalanceTokens } from "@/lib/tokenOrder";
 import { useApi } from "@/lib/useApi";
+
+const TOKEN_SYMBOLS = ["OKB", "BEM", "TEST"] as const;
+
+function emptyTokenStats(): ProfileTokenStats[] {
+  return TOKEN_SYMBOLS.map((symbol) => ({
+    symbol,
+    volume: 0,
+    pnl: 0,
+    pnlUsd: 0,
+    bets: 0,
+    rounds: 0,
+    wonRounds: 0,
+    lostRounds: 0,
+    drawRounds: 0,
+    settledRounds: 0,
+    openRounds: 0,
+    winRate: 0,
+  }));
+}
 
 const EMPTY_STATS: ProfileStats = {
   rounds: 0,
@@ -51,6 +72,7 @@ const EMPTY_STATS: ProfileStats = {
   drawRounds: 0,
   settledRounds: 0,
   openRounds: 0,
+  byToken: emptyTokenStats(),
 };
 
 function ago(ts: number): string {
@@ -65,12 +87,16 @@ function ago(ts: number): string {
 export default function Profile() {
   const { handle = "end837" } = useParams();
   const [range, setRange] = useState<Range>("24h");
+  const [token, setToken] = useState<string>("TEST");
 
   const profileState = useApi(() => getProfile(handle), [handle]);
   const roundsState = useApi(() => getProfileRounds(handle), [handle]);
   const positionsState = useApi(() => getPositions(handle), [handle]);
   const activityState = useApi(() => getActivity(handle), [handle]);
-  const equityState = useApi(() => getEquityCurve(handle, range), [handle, range]);
+  const equityState = useApi(
+    () => getEquityCurve(handle, range, token),
+    [handle, range, token],
+  );
   const profileAddress = profileState.data?.address ?? null;
   const tokensState = useApi(getBetTokens, []);
   const walletState = useApi(
@@ -103,6 +129,9 @@ export default function Profile() {
               equity={equityState.data ?? []}
               range={range}
               onRangeChange={setRange}
+              token={token}
+              onTokenChange={setToken}
+              tokens={tokensState.data ?? []}
               loading={equityState.loading}
             />
             <PositionsCard
@@ -252,13 +281,8 @@ function StatsRow({ stats }: { stats: ProfileStats }) {
         (stats.drawRounds > 0 ? ` / ${stats.drawRounds} 平` : ""),
       tone: stats.winRate >= 50 ? "text-up" : "text-white",
     },
-    {
-      label: "累计盈亏",
-      value: fmtSignedUsd(stats.pnlUsd),
-      sub: "已结算部分",
-      tone: stats.pnlUsd >= 0 ? "text-up" : "text-down",
-    },
   ];
+  const byToken = stats.byToken ?? emptyTokenStats();
 
   return (
     <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
@@ -274,6 +298,32 @@ function StatsRow({ stats }: { stats: ProfileStats }) {
           <div className="mt-0.5 truncate text-[8.5px] text-muted2">{item.sub}</div>
         </div>
       ))}
+
+      <div className="rounded-lg border border-line bg-panel2/20 px-3 py-2.5">
+        <div className="text-[8.5px] text-muted2">累计盈亏（分代币）</div>
+        <div className="mt-1 space-y-0.5">
+          {byToken.map((token) => (
+            <div
+              key={token.symbol}
+              className="flex items-baseline justify-between gap-2 text-[9px]"
+            >
+              <span className="text-muted2">{token.symbol}</span>
+              <span
+                className={cn(
+                  "num truncate font-medium",
+                  token.pnl > 0
+                    ? "text-up"
+                    : token.pnl < 0
+                      ? "text-down"
+                      : "text-muted2",
+                )}
+              >
+                {fmtSignedToken(token.pnl, token.symbol)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -286,12 +336,8 @@ const RANGES: Array<{ id: Range; label: string }> = [
 
 type WalletSnapshot = Awaited<ReturnType<typeof getWallet>>;
 
-function fmtBalance(value: number): string {
-  return value.toLocaleString("en-US", { maximumFractionDigits: 4 });
-}
-
 /**
- * 账户余额：链上下注代币按 mock 价格折成 USD，附带充值 / 提现入口。
+ * 账户余额：只展示 OKB / BEM / TEST 的链上余额，不再折 USD。
  * 充值走 /api/faucet（演示环境领测试币），提现暂时只给提示。
  */
 function BalanceCard({
@@ -316,11 +362,10 @@ function BalanceCard({
     address && user?.address && address.toLowerCase() === user.address.toLowerCase(),
   );
 
-  const rows = tokens.map((token) => ({
+  const rows = orderBalanceTokens(tokens).map((token) => ({
     token,
     balance: wallet?.tokens.find((item) => item.symbol === token.symbol)?.balance ?? 0,
   }));
-  const totalUsd = rows.reduce((sum, row) => sum + row.balance * row.token.priceUsd, 0);
 
   const recharge = async () => {
     if (!address || !isSelf || pending) return;
@@ -340,37 +385,38 @@ function BalanceCard({
   return (
     <section className="rounded-lg border border-line bg-panel2/20 px-3 py-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="text-[8.5px] text-muted2">账户余额</div>
+
           {loading ? (
-            <div className="skeleton mt-1.5 h-7 w-36 rounded" />
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {TOKEN_SYMBOLS.map((symbol) => (
+                <div key={symbol} className="skeleton h-[46px] rounded-md" />
+              ))}
+            </div>
           ) : address ? (
-            <div className="num mt-0.5 text-[24px] font-semibold leading-none tracking-tight text-white">
-              {wallet ? fmtUsd(totalUsd) : "—"}
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {rows.map((row) => (
+                <div
+                  key={row.token.symbol}
+                  className="min-w-0 rounded-md border border-line bg-panel2/40 px-2.5 py-2"
+                  title={`${row.token.name} 余额`}
+                >
+                  <div className="flex min-w-0 items-center gap-1 text-[9px] text-muted2">
+                    <TokenIcon icon={row.token.icon} size={12} />
+                    <span className="truncate">{row.token.symbol}</span>
+                  </div>
+                  <div className="num mt-1 truncate text-[16px] font-semibold leading-none text-white">
+                    {wallet ? fmtTokenAmount(row.balance) : "—"}
+                  </div>
+                </div>
+              ))}
             </div>
           ) : (
-            <div className="num mt-0.5 text-[24px] font-semibold leading-none tracking-tight text-muted2">
-              —
-            </div>
+            <div className="mt-2 text-[9px] text-muted2">该用户没有托管账户</div>
           )}
 
-          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-            {address && wallet
-              ? rows.map((row) => (
-                  <span
-                    key={row.token.symbol}
-                    className="inline-flex items-center gap-1 rounded border border-line bg-panel2/50 px-1.5 py-[3px] text-[8.5px] text-muted"
-                    title={`${row.token.name} 余额`}
-                  >
-                    <TokenIcon icon={row.token.icon} size={13} />
-                    <span className="num text-white">{fmtBalance(row.balance)}</span>
-                    <span className="text-muted2">{row.token.symbol}</span>
-                  </span>
-                ))
-              : null}
-            {!address && (
-              <span className="text-[9px] text-muted2">该用户没有托管账户</span>
-            )}
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {address && !loading && !wallet && (
               <span className="text-[9px] text-muted2">余额读取失败</span>
             )}
@@ -413,12 +459,18 @@ function EquityCard({
   equity,
   range,
   onRangeChange,
+  token,
+  onTokenChange,
+  tokens,
   loading,
 }: {
   stats: ProfileStats;
   equity: EquityPoint[];
   range: Range;
   onRangeChange: (range: Range) => void;
+  token: string;
+  onTokenChange: (token: string) => void;
+  tokens: BetToken[];
   loading: boolean;
 }) {
   const change = useMemo(() => {
@@ -426,22 +478,30 @@ function EquityCard({
     return equity[equity.length - 1].v - equity[0].v;
   }, [equity]);
 
+  const tokenStats = stats.byToken?.find((item) => item.symbol === token);
+  const pnl = tokenStats?.pnl ?? 0;
+  const settledRounds = tokenStats?.settledRounds ?? stats.settledRounds;
+  const winRate = tokenStats?.winRate ?? stats.winRate;
+  const openRounds = tokenStats?.openRounds ?? stats.openRounds;
+
   return (
     <section className="overflow-hidden rounded-lg border border-line bg-panel2/20">
       <div className="flex items-start justify-between gap-3 px-3 pt-3">
         <div className="min-w-0">
-          <div className="text-[8.5px] text-muted2">累计盈亏（已实现）</div>
+          <div className="text-[8.5px] text-muted2">
+            累计盈亏（已实现） · {token}
+          </div>
           <div
             className={cn(
-              "num mt-0.5 text-[25px] font-semibold leading-none tracking-tight",
-              stats.pnlUsd >= 0 ? "text-up" : "text-down",
+              "num mt-0.5 truncate text-[25px] font-semibold leading-none tracking-tight",
+              pnl >= 0 ? "text-up" : "text-down",
             )}
           >
-            {fmtSignedUsd(stats.pnlUsd)}
+            {fmtSignedToken(pnl, token)}
           </div>
           <div className="num mt-1.5 flex items-center gap-1.5 text-[9.5px]">
             <span className={change >= 0 ? "text-up/80" : "text-down/80"}>
-              {fmtSignedUsd(change)}
+              {loading ? "—" : fmtSignedToken(change, token)}
             </span>
             <span className="text-muted2">
               · {RANGES.find((item) => item.id === range)?.label}区间
@@ -468,27 +528,49 @@ function EquityCard({
         </div>
       </div>
 
+      <div className="mt-2 flex flex-wrap items-center gap-2 px-3">
+        <span className="text-[8.5px] text-muted2">按代币</span>
+        <div className="flex items-center gap-0.5">
+          {orderBalanceTokens(tokens).map((item) => (
+            <button
+              key={item.symbol}
+              type="button"
+              onClick={() => onTokenChange(item.symbol)}
+              className={cn(
+                "rounded px-1.5 py-1 text-[8.5px] font-medium transition",
+                token === item.symbol
+                  ? "bg-panel2/60 text-white"
+                  : "text-muted2 hover:text-white",
+              )}
+            >
+              {item.symbol}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="mt-1 h-[168px] px-2">
-        {loading && equity.length === 0 ? (
+        {loading ? (
           <div className="skeleton h-full w-full rounded-md" />
         ) : equity.length < 2 ? (
           <div className="flex h-full items-center justify-center text-[9.5px] text-muted2">
-            这个区间还没有已结算的轮次
+            这个区间还没有已结算的 {token} 轮次
           </div>
         ) : (
-          <AreaChart data={equity} range={range} />
+          <AreaChart data={equity} range={range} token={token} />
         )}
       </div>
 
       <div className="mx-3 mb-3 flex items-center justify-between border-t border-line pt-2.5 text-[9px]">
         <span className="text-muted2">
-          已结算 <span className="num text-white">{stats.settledRounds}</span> 轮
+          {token} 已结算{" "}
+          <span className="num text-white">{settledRounds}</span> 轮
         </span>
         <span className="text-muted2">
-          胜率 <span className="num text-white">{stats.winRate.toFixed(1)}%</span>
+          胜率 <span className="num text-white">{winRate.toFixed(1)}%</span>
         </span>
         <span className="text-muted2">
-          未结算 <span className="num text-white">{stats.openRounds}</span> 轮
+          未结算 <span className="num text-white">{openRounds}</span> 轮
         </span>
       </div>
     </section>

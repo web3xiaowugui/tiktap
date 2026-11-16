@@ -59,7 +59,7 @@ curl http://127.0.0.1:8787/api/health
 | GET | `/api/profiles/:handle/positions` | 当前持仓（未结算的市场轮次） |
 | GET | `/api/profiles/:handle/rounds?limit=` | 参与轮次历史（地址 × 市场 × 轮次汇总） |
 | GET | `/api/profiles/:handle/activity?limit=` | 活动流：下注 / 开奖 / 自动领奖 / 观点 |
-| GET | `/api/profiles/:handle/equity?range=24h\|7d\|30d` | 区间累计已实现盈亏曲线 |
+| GET | `/api/profiles/:handle/equity?range=24h\|7d\|30d&token=OKB\|BEM\|TEST` | 某个代币的区间累计已实现盈亏曲线 |
 | GET | `/api/auth/x/start` | 返回 X 授权地址（state + PKCE，服务端生成） |
 | GET | `/api/auth/x/callback` | X 授权回调：换 token、取 users/me，302 回前端带一次性票据 |
 | POST | `/api/auth/x/session` | 票据换账号资料，随后前端建/复用托管账户 |
@@ -124,6 +124,8 @@ K 线仍是浏览器直连 OKX（见上），行情不进后端。观点 / 持�
 - 聚合粒度是 **地址 × 市场 × 轮次**：market = 标的 × 下注代币，BTC/TEST 和 BTC/OKB 各自结算，必须分开算。
 - 金额是 `TEXT` 存的 wei，SQL 里不做 `SUM`（会转成浮点丢精度），统一取出来用 `BigInt` 聚合。
 - 统计口径：`rounds` = 参与的市场轮次数；`wonRounds / lostRounds / drawRounds` 按净盈亏分（双边对冲、单边退款通常记平）；胜率 = 胜 /（胜 + 负），平局不进分母。
+- 统计同时按 `OKB / BEM / TEST` 拆开（`byToken`）：累计盈亏用代币数量，曲线接口也必须带 `token`，页面切换代币时只展示该代币的已结算轮次。
+- 账户余额和顶部栏只展示 `OKB / BEM / TEST` 的链上数量，不再折 USD。
 - 累计盈亏与曲线只算已结算部分；未结算的轮次去「当前持仓」。
 - 没有链上记录的老 mock handle 会退回 mock 身份（统计为空），等排行榜接口接库后再统一。
 - 以后做全站排行榜 / 平台统计需要扫全表时，再把这个查询物化成 `address_round_stats` 表；接口和页面不用改。

@@ -30,6 +30,9 @@ const RANGE_MS: Record<Range, number> = {
 
 const PRICE_USD = new Map(BET_TOKENS.map((token) => [token.symbol, token.priceUsd]));
 
+/** 余额 / 盈亏展示顺序；用户只需要 OKB、BEM、TEST 这三个。 */
+const TOKEN_ORDER = ["OKB", "BEM", "TEST"];
+
 const SIDE_VOID = 2;
 
 export interface ProfileUser {
@@ -221,28 +224,99 @@ export function readProfileStats(db: Db, address: string): ProfileStats {
   let pnlUsd = 0;
   let bets = 0;
 
+  interface TokenAcc {
+    symbol: string;
+    volumeWei: bigint;
+    pnlWei: bigint;
+    bets: number;
+    rounds: number;
+    won: number;
+    lost: number;
+    draws: number;
+    open: number;
+  }
+
+  const byToken = new Map<string, TokenAcc>();
+  const accFor = (symbol: string): TokenAcc => {
+    let acc = byToken.get(symbol);
+    if (!acc) {
+      acc = {
+        symbol,
+        volumeWei: 0n,
+        pnlWei: 0n,
+        bets: 0,
+        rounds: 0,
+        won: 0,
+        lost: 0,
+        draws: 0,
+        open: 0,
+      };
+      byToken.set(symbol, acc);
+    }
+    return acc;
+  };
+  for (const token of BET_TOKENS) accFor(token.symbol);
+
   for (const group of groups) {
     bets += group.bets;
     volumeUsd += usd(group.amountWei, group.betToken);
 
+    const acc = accFor(group.betToken);
+    acc.bets += group.bets;
+    acc.rounds += 1;
+    acc.volumeWei += group.amountWei;
+
     if (group.winnerSide === null) {
       open += 1;
+      acc.open += 1;
       continue;
     }
     if (isRefund(group)) continue;
 
-    const net = usd(netWei(group), group.betToken);
-    if (Math.abs(net) < DRAW_USD) {
+    const net = netWei(group);
+    const netUsd = usd(net, group.betToken);
+    acc.pnlWei += net;
+    if (Math.abs(netUsd) < DRAW_USD) {
       draws += 1;
+      acc.draws += 1;
       continue;
     }
 
-    pnlUsd += net;
-    if (net > 0) wins += 1;
-    else losses += 1;
+    pnlUsd += netUsd;
+    if (netUsd > 0) {
+      wins += 1;
+      acc.won += 1;
+    } else {
+      losses += 1;
+      acc.lost += 1;
+    }
   }
 
   const settled = wins + losses;
+  const tokenRank = (symbol: string) => {
+    const index = TOKEN_ORDER.indexOf(symbol);
+    return index === -1 ? TOKEN_ORDER.length : index;
+  };
+  const byTokenStats = [...byToken.values()]
+    .sort((a, b) => tokenRank(a.symbol) - tokenRank(b.symbol))
+    .map((acc) => {
+      const decided = acc.won + acc.lost;
+      return {
+        symbol: acc.symbol,
+        volume: Number(acc.volumeWei) / 1e18,
+        pnl: Number(acc.pnlWei) / 1e18,
+        pnlUsd: usd(acc.pnlWei, acc.symbol),
+        bets: acc.bets,
+        rounds: acc.rounds,
+        wonRounds: acc.won,
+        lostRounds: acc.lost,
+        drawRounds: acc.draws,
+        settledRounds: acc.won + acc.lost + acc.draws,
+        openRounds: acc.open,
+        winRate: decided > 0 ? (acc.won / decided) * 100 : 0,
+      };
+    });
+
   return {
     rounds: groups.length,
     bets,
@@ -254,6 +328,7 @@ export function readProfileStats(db: Db, address: string): ProfileStats {
     drawRounds: draws,
     settledRounds: wins + losses + draws,
     openRounds: open,
+    byToken: byTokenStats,
   };
 }
 
@@ -375,12 +450,18 @@ export function readProfileEvents(db: Db, address: string, limit = 100): Profile
     .slice(0, Math.min(Math.max(limit, 1), 200));
 }
 
-/** 区间内的累计已实现盈亏（USD），用于个人主页曲线。 */
-export function readProfileEquity(db: Db, address: string, range: Range): EquityPoint[] {
+/** 区间内某个代币的累计已实现盈亏（代币数量），用于个人主页曲线。 */
+export function readProfileEquity(
+  db: Db,
+  address: string,
+  range: Range,
+  betToken: string,
+): EquityPoint[] {
   const since = Date.now() - RANGE_MS[range];
   const settled = loadGroups(db, address)
     .filter(
       (group) =>
+        group.betToken === betToken &&
         group.winnerSide !== null &&
         (group.settledAt ?? group.firstAt) >= since,
     )
@@ -389,7 +470,7 @@ export function readProfileEquity(db: Db, address: string, range: Range): Equity
   let cumulative = 0;
   const points: EquityPoint[] = [{ t: since, v: 0 }];
   for (const group of settled) {
-    cumulative += isRefund(group) ? 0 : usd(netWei(group), group.betToken);
+    cumulative += isRefund(group) ? 0 : Number(netWei(group)) / 1e18;
     points.push({ t: group.settledAt ?? group.firstAt, v: cumulative });
   }
   return points;
