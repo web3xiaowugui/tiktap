@@ -138,9 +138,12 @@ export async function getFeed(symbol: string, roundStartBlock?: number): Promise
 
 export async function getMarketActivity(
   symbol: string,
+  betToken: string,
   roundStartBlock?: number,
 ): Promise<MarketActivity[]> {
-  return request<MarketActivity[]>(`/activity${query({ symbol, round: roundStartBlock })}`);
+  return request<MarketActivity[]>(
+    `/activity${query({ symbol, token: betToken, round: roundStartBlock })}`,
+  );
 }
 
 export async function getHoldings(address?: string | null): Promise<BetHolding[]> {

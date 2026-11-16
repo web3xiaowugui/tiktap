@@ -559,72 +559,6 @@ const FEED: FeedItem[] = [
 /*  Market activity                                                            */
 /* -------------------------------------------------------------------------- */
 
-export const MARKET_ACTIVITY: MarketActivity[] = [
-  {
-    id: "m1",
-    name: "NORH7",
-    avatar: "linear-gradient(135deg,#f97316,#7c2d12)",
-    side: "short",
-    amountUsd: 86_898_818,
-    time: "5分钟",
-  },
-  {
-    id: "m2",
-    name: "Crumpet_Eth",
-    avatar: "linear-gradient(135deg,#60a5fa,#312e81)",
-    side: "long",
-    amountUsd: 7_182_642,
-    time: "7分钟",
-  },
-  {
-    id: "m3",
-    name: "DoctorFait",
-    avatar: "linear-gradient(135deg,#34d399,#064e3b)",
-    side: "long",
-    amountUsd: 2_415_130,
-    time: "8分钟",
-  },
-  {
-    id: "m4",
-    name: "kamaaride",
-    avatar: "linear-gradient(135deg,#facc15,#78350f)",
-    side: "long",
-    amountUsd: 426_446,
-    time: "15分钟",
-  },
-  {
-    id: "m5",
-    name: "McMillionaire",
-    avatar: "linear-gradient(135deg,#e879f9,#581c87)",
-    side: "short",
-    amountUsd: 1_235_890,
-    time: "15分钟",
-  },
-  {
-    id: "m6",
-    name: "Arkive_sabb",
-    avatar: "linear-gradient(135deg,#f59e0b,#7c2d12)",
-    side: "long",
-    amountUsd: 547_340,
-    time: "22分钟",
-  },
-  {
-    id: "m7",
-    name: "Rowdy",
-    avatar: "linear-gradient(135deg,#38bdf8,#1e3a8a)",
-    side: "long",
-    amountUsd: 1_978_640,
-    time: "31分钟",
-  },
-  {
-    id: "m8",
-    name: "sats69",
-    avatar: "linear-gradient(135deg,#c084fc,#4c1d95)",
-    side: "short",
-    amountUsd: 1_304_332,
-    time: "44分钟",
-  },
-];
 
 /* -------------------------------------------------------------------------- */
 /*  My holdings                                                                */
@@ -1061,13 +995,6 @@ export function holdersFor(
 
 export function feedFor(_symbol: string, roundStartBlock?: number): FeedItem[] {
   return withFollow(rotatedForRound(FEED, roundStartBlock));
-}
-
-export function marketActivityFor(
-  _symbol: string,
-  roundStartBlock?: number,
-): MarketActivity[] {
-  return withFollow(rotatedForRound(MARKET_ACTIVITY, roundStartBlock));
 }
 
 export function positionsFor(_handle: string): Position[] {

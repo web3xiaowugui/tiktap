@@ -92,8 +92,8 @@ export default function Discover() {
     [symbol, selected.startBlock],
   );
   const activityState = useApi(
-    () => getMarketActivity(symbol, selected.startBlock),
-    [symbol, selected.startBlock],
+    () => getMarketActivity(symbol, betToken?.symbol ?? "TEST", selected.startBlock),
+    [symbol, betToken?.symbol, selected.startBlock],
   );
   const layoutRef = useRef<HTMLDivElement>(null);
   const [bottomHeight, setBottomHeight] = useState(DEFAULT_BOTTOM_HEIGHT);
@@ -592,47 +592,74 @@ function ActivityPanel({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {visible.length === 0 && (
           <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-1 text-[13px] text-muted2">
-            <p>没有符合条件的活动</p>
-            <button
-              type="button"
-              onClick={() => setOnlyFollowed(false)}
-              className="text-[12px] font-medium text-brand2 hover:underline"
-            >
-              清除筛选
-            </button>
+            <p>{onlyFollowed ? "没有已关注的人参与" : "本轮还没有活动"}</p>
+            {onlyFollowed && (
+              <button
+                type="button"
+                onClick={() => setOnlyFollowed(false)}
+                className="text-[12px] font-medium text-brand2 hover:underline"
+              >
+                清除筛选
+              </button>
+            )}
           </div>
         )}
 
-        {visible.map((item) => (
-          <div
-            key={item.id}
-            className="grid grid-cols-[128px_minmax(0,0.5fr)_minmax(0,1fr)_minmax(0,0.7fr)] items-center gap-2 border-b border-line/50 px-3 py-2.5 transition hover:bg-white/[0.07]"
-          >
-            <div className="flex min-w-0 items-center gap-2">
-              <Avatar name={item.name} gradient={item.avatar} size={28} />
-              <div className="truncate text-[14px] font-medium text-white">
-                {item.name}
+        {visible.map((item) => {
+          const label =
+            item.kind === "bet"
+              ? item.side === "long"
+                ? "Tap涨"
+                : "Tap跌"
+              : item.kind === "settle"
+                ? item.side === "long"
+                  ? "开奖 · 涨"
+                  : item.side === "short"
+                    ? "开奖 · 跌"
+                    : "开奖 · 平"
+                : "自动领取";
+
+          return (
+            <div
+              key={item.id}
+              className="grid grid-cols-[148px_minmax(0,0.55fr)_minmax(0,1fr)_minmax(0,0.6fr)] items-center gap-2 border-b border-line/50 px-3 py-2 transition hover:bg-white/[0.07]"
+              title={`tx ${item.txHash}`}
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <Avatar name={item.name} gradient={item.avatar} size={26} />
+                <div className="min-w-0">
+                  <div className="truncate text-[14px] font-medium text-white">
+                    {item.name}
+                  </div>
+                  <div className="num truncate text-[10px] leading-tight text-muted2">
+                    {item.txHash.slice(0, 8)}…{item.txHash.slice(-6)}
+                  </div>
+                </div>
+              </div>
+              <div
+                className={cn(
+                  "truncate text-[14px] font-medium",
+                  item.kind === "claim"
+                    ? "text-brand2"
+                    : item.side === "long"
+                      ? "text-up"
+                      : item.side === "short"
+                        ? "text-down"
+                        : "text-muted2",
+                )}
+              >
+                {label}
+              </div>
+              <div className="num truncate text-left text-[14px] text-white">
+                {item.amount || "—"}
+              </div>
+              <div className="num truncate text-right text-[14px] text-muted2">
+                {item.time}
+                {item.time === "刚刚" ? "" : "前"}
               </div>
             </div>
-            <div
-              className={cn(
-                "truncate text-[14px] font-medium",
-                item.side === "long" ? "text-up" : "text-down",
-              )}
-            >
-              {item.side === "long" ? "Tap涨" : "Tap跌"}
-            </div>
-            <div
-              className="num truncate text-left text-[14px] text-white"
-              title={fmtUsd(item.amountUsd, 0)}
-            >
-              {fmtUsd(item.amountUsd, 0)}
-            </div>
-            <div className="num truncate text-right text-[14px] text-muted2">
-              {item.time}前
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

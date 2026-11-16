@@ -141,13 +141,20 @@ export interface FeedItem {
 }
 
 /** One row in the 活动 list: who bet which way, how much, how long ago. */
+export type ActivityKind = "bet" | "settle" | "claim";
+
 export interface MarketActivity {
   id: string;
+  kind: ActivityKind;
   name: string;
   avatar: string;
-  side: Side;
-  amountUsd: number;
+  /** 下注方向 / 开奖结果；领取事件没有方向。 */
+  side: Side | null;
+  /** 带单位的金额，例如 "10 TEST"；结算事件为空串。 */
+  amount: string;
   time: string;
+  /** 对应链上交易，前端可展示缩略 hash。 */
+  txHash: string;
   /** Whether the demo account follows this trader; drives 仅看已关注. */
   followed?: boolean;
 }

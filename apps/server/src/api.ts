@@ -22,6 +22,7 @@ import {
 } from "./settlement.ts";
 import { readConfig } from "./tx.ts";
 import { getRoundPrice } from "./round-prices.ts";
+import { readMarketActivity } from "./activity.ts";
 import { listBets } from "./bets.ts";
 import {
   marketFor,
@@ -42,7 +43,7 @@ import {
   LEADERBOARD,
   makeCandles,
   makeEquity,
-  marketActivityFor,
+
   MY_HOLDINGS,
   myBetFor,
   positionsFor,
@@ -363,9 +364,19 @@ export function registerRoutes(router: Router, db: Db): void {
     feedFor(requireToken(query.get("symbol") ?? "").symbol, readRoundBlock(query)),
   );
 
-  router.get("/api/activity", ({ query }) =>
-    marketActivityFor(requireToken(query.get("symbol") ?? "").symbol, readRoundBlock(query)),
-  );
+  /**
+   * 一轮活动流（市场级：标的 + 下注代币）：下注 / 开奖 / 自动领奖，全部读库。
+   */
+  router.get("/api/activity", ({ query }) => {
+    const symbol = requireToken(query.get("symbol") ?? "").symbol;
+    const betToken = requireBetToken(query.get("token") ?? "TEST").symbol;
+    const roundStartBlock = readRoundBlock(query);
+    const cfg = readConfig();
+    if (!cfg.market) return [];
+
+    const row = marketFor(db, symbol, betToken);
+    return readMarketActivity(db, row, roundIndexFor(roundStartBlock));
+  });
 
   // ---- 我的持仓 ----
   router.get("/api/holdings", async ({ query }) => {
