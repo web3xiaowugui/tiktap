@@ -214,7 +214,7 @@ const BADGE_TONES: Record<ProfileType["badges"][number]["tone"], string> = {
   gold: "border-[#5d4a1c] bg-[#251d0c] text-[#e7bf58]",
   green: "border-up/25 bg-up/10 text-up",
   purple: "border-brand/30 bg-brand/10 text-brand2",
-  neutral: "border-line bg-panel2 text-muted",
+  neutral: "border-line bg-panel2/50 text-muted",
 };
 
 function BadgeChip({ badge }: { badge: ProfileType["badges"][number] }) {
@@ -265,7 +265,7 @@ function StatsRow({ stats }: { stats: ProfileStats }) {
       {items.map((item) => (
         <div
           key={item.label}
-          className="rounded-lg border border-line bg-panel px-3 py-2.5"
+          className="rounded-lg border border-line bg-panel2/20 px-3 py-2.5"
         >
           <div className="text-[8.5px] text-muted2">{item.label}</div>
           <div className={cn("num mt-1 truncate text-[17px] font-semibold", item.tone)}>
@@ -338,7 +338,7 @@ function BalanceCard({
   };
 
   return (
-    <section className="rounded-lg border border-line bg-panel px-3 py-3">
+    <section className="rounded-lg border border-line bg-panel2/20 px-3 py-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[8.5px] text-muted2">账户余额</div>
@@ -359,7 +359,7 @@ function BalanceCard({
               ? rows.map((row) => (
                   <span
                     key={row.token.symbol}
-                    className="inline-flex items-center gap-1 rounded border border-line bg-panel2 px-1.5 py-[3px] text-[8.5px] text-muted"
+                    className="inline-flex items-center gap-1 rounded border border-line bg-panel2/50 px-1.5 py-[3px] text-[8.5px] text-muted"
                     title={`${row.token.name} 余额`}
                   >
                     <TokenIcon icon={row.token.icon} size={13} />
@@ -427,7 +427,7 @@ function EquityCard({
   }, [equity]);
 
   return (
-    <section className="overflow-hidden rounded-lg border border-line bg-panel">
+    <section className="overflow-hidden rounded-lg border border-line bg-panel2/20">
       <div className="flex items-start justify-between gap-3 px-3 pt-3">
         <div className="min-w-0">
           <div className="text-[8.5px] text-muted2">累计盈亏（已实现）</div>
@@ -458,7 +458,7 @@ function EquityCard({
               className={cn(
                 "rounded px-1.5 py-1 text-[8.5px] transition",
                 range === item.id
-                  ? "bg-panel3 text-white"
+                  ? "bg-panel2/60 text-white"
                   : "text-muted2 hover:text-white",
               )}
             >
@@ -504,9 +504,9 @@ const STATUS_TEXT: Record<ProfileRound["status"], string> = {
 
 const STATUS_TONE: Record<ProfileRound["status"], string> = {
   open: "bg-brand/10 text-brand2",
-  settled: "bg-panel3 text-muted",
+  settled: "bg-panel2/60 text-muted",
   claimed: "bg-up/10 text-up",
-  refunded: "bg-panel3 text-muted2",
+  refunded: "bg-panel2/60 text-muted2",
 };
 
 function RoundRow({ round }: { round: ProfileRound }) {
@@ -521,7 +521,7 @@ function RoundRow({ round }: { round: ProfileRound }) {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_58px_minmax(0,1fr)_minmax(0,0.9fr)_54px] items-center border-b border-line/50 px-3 py-2 last:border-0">
       <div className="flex min-w-0 items-center gap-1.5">
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-panel2 text-[8px] font-bold text-muted">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-panel2/50 text-[8px] font-bold text-muted">
           {round.symbol.slice(0, 1)}
         </span>
         <div className="min-w-0">
@@ -585,7 +585,7 @@ function PositionsCard({
   loading: boolean;
 }) {
   return (
-    <section className="overflow-hidden rounded-lg border border-line bg-panel">
+    <section className="overflow-hidden rounded-lg border border-line bg-panel2/20">
       <div className="flex h-9 items-center gap-2 border-b border-line px-3">
         <span className="text-[11px] font-medium text-white">
           当前持仓 <span className="num text-muted2">{rounds.length}</span>
@@ -625,7 +625,7 @@ function PositionsCard({
                 className="grid grid-cols-[minmax(0,1fr)_58px_minmax(0,1fr)_minmax(0,0.9fr)_54px] items-center border-b border-line/50 px-3 py-2 last:border-0"
               >
                 <div className="flex min-w-0 items-center gap-1.5">
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-panel2 text-[8px] font-bold text-muted">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-panel2/50 text-[8px] font-bold text-muted">
                     {round.symbol.slice(0, 1)}
                   </span>
                   <div className="min-w-0">
@@ -665,7 +665,7 @@ function RoundsCard({
   loading: boolean;
 }) {
   return (
-    <section className="overflow-hidden rounded-lg border border-line bg-panel">
+    <section className="overflow-hidden rounded-lg border border-line bg-panel2/20">
       <div className="flex h-9 items-center gap-2 border-b border-line px-3">
         <span className="text-[11px] font-medium text-white">
           参与轮次 <span className="num text-muted2">{rounds.length}</span>
@@ -773,7 +773,7 @@ function ActivityCard({
   loading: boolean;
 }) {
   return (
-    <section className="flex min-h-[520px] flex-col overflow-hidden rounded-lg border border-line bg-panel">
+    <section className="flex min-h-[520px] flex-col overflow-hidden rounded-lg border border-line bg-panel2/20">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-line px-3">
         <span className="text-[11px] font-medium text-white">活动</span>
         <span className="num text-[8px] text-muted2">{events.length}</span>
@@ -802,7 +802,7 @@ function ActivityCard({
               key={event.id}
               className="flex items-start gap-2 border-b border-line/50 px-3 py-2 transition last:border-0 hover:bg-panel2/40"
             >
-              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-panel2">
+              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-panel2/50">
                 <EventIcon event={event} />
               </span>
               <div className="min-w-0 flex-1 break-words text-[9.5px] leading-relaxed">
