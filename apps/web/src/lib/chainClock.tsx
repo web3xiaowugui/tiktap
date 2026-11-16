@@ -4,6 +4,7 @@ import {
   useContext,
   useMemo,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -49,6 +50,8 @@ export function ChainClockProvider({ children }: { children: ReactNode }) {
   const now = useNow(1_000);
   const [sample, setSample] = useState<{ info: ChainRound; at: number } | null>(null);
   const [nonce, setNonce] = useState(0);
+  const [phaseTicks, setPhaseTicks] = useState(0);
+  const lastPhase = useRef<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -72,6 +75,18 @@ export function ChainClockProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(() => setNonce((value) => value + 1), []);
 
+  // 封盘 / 开新轮时自动让池子、我的下注、持仓重取一次，不用用户手动点。
+  const phaseKey = sample
+    ? `${sample.info.currentRound}:${sample.info.isBettingOpen}`
+    : null;
+  useEffect(() => {
+    if (phaseKey === null) return;
+    if (lastPhase.current !== null && lastPhase.current !== phaseKey) {
+      setPhaseTicks((value) => value + 1);
+    }
+    lastPhase.current = phaseKey;
+  }, [phaseKey]);
+
   const value = useMemo<ChainClockValue>(() => {
     if (!sample) {
       const fallback = getBlockNumber(now);
@@ -82,7 +97,7 @@ export function ChainClockProvider({ children }: { children: ReactNode }) {
         bettingOpen: true,
         blocksToClose: 0,
         live: false,
-        version: nonce,
+        version: nonce + phaseTicks,
         refresh,
       };
     }
@@ -100,7 +115,7 @@ export function ChainClockProvider({ children }: { children: ReactNode }) {
       bettingOpen: blocksToClose > 0,
       blocksToClose,
       live: true,
-      version: nonce,
+      version: nonce + phaseTicks,
       refresh,
     };
   }, [sample, now, refresh, nonce]);
