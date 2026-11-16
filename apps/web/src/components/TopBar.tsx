@@ -50,22 +50,24 @@ export function TopBar() {
           <Logo size="md" />
         </Link>
         <span className="hidden h-4 w-px bg-line2 sm:block" />
-        <button
-          type="button"
-          onClick={() => navigate("/discover")}
-          className="hidden items-center rounded-md bg-panel2 px-2.5 py-1.5 text-[11px] font-medium text-white transition hover:bg-panel3 sm:flex"
-        >
-          发现
-        </button>
-        <button
-          type="button"
-          onClick={() =>
-            navigate(`/u/${user?.address ?? user?.handle ?? "end837"}`)
-          }
-          className="hidden items-center rounded-md bg-panel2 px-2.5 py-1.5 text-[11px] font-medium text-white transition hover:bg-panel3 sm:flex"
-        >
-          主页
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => navigate("/discover")}
+            className="hidden items-center rounded-md bg-panel2 px-2.5 py-1.5 text-[11px] font-medium text-white transition hover:bg-panel3 sm:flex"
+          >
+            发现
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              navigate(`/u/${user?.address ?? user?.handle ?? "end837"}`)
+            }
+            className="hidden items-center rounded-md bg-panel2 px-2.5 py-1.5 text-[11px] font-medium text-white transition hover:bg-panel3 sm:flex"
+          >
+            主页
+          </button>
+        </div>
       </div>
 
       <div className="flex min-w-0 flex-1 justify-center px-2 sm:px-6">
