@@ -463,7 +463,7 @@ function PoolStat({
         )}
       </div>
 
-      {isSide && share !== undefined && share > 0 && (
+      {isSide && share !== undefined && (
         <div
           className={cn(
             "flex h-5 shrink-0 items-center justify-center",
