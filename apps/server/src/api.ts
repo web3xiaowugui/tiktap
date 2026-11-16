@@ -21,6 +21,7 @@ import {
   winnerFromLabel,
 } from "./settlement.ts";
 import { readConfig } from "./tx.ts";
+import { getRoundPrice } from "./round-prices.ts";
 import {
   marketFor,
   readMyBet,
@@ -180,6 +181,27 @@ export function registerRoutes(router: Router, db: Db): void {
   // ---- 轮次真值 ----
   router.get("/api/round", async () => getRoundInfo(readConfig()));
 
+  /**
+   * 某一轮的锁定价格 / 开奖价格（只读库里已写入的值，不触发行情请求）。
+   * round 传轮次起始块，和池子接口用同一个口径。
+   */
+  router.get("/api/round-price", async ({ query }) => {
+    const symbol = (query.get("symbol") ?? "BTC").toUpperCase();
+    const roundStartBlock = readRoundBlock(query);
+    const roundIndex = roundIndexFor(roundStartBlock);
+    const row = getRoundPrice(db, symbol, roundIndex);
+    return {
+      symbol,
+      roundIndex,
+      roundStartBlock,
+      lockPrice: row?.lockPrice ?? null,
+      lockTime: row?.lockTime ?? null,
+      settlePrice: row?.settlePrice ?? null,
+      settleTime: row?.settleTime ?? null,
+      updatedAt: row?.updatedAt ?? null,
+    };
+  });
+
   // ---- 结算（单个市场 / 一整轮）----
   router.post("/api/settle", async ({ req }) => {
     const body = await readJson<{
@@ -198,7 +220,7 @@ export function registerRoutes(router: Router, db: Db): void {
     const roundIndex = body.roundIndex ?? (await defaultRound(cfg));
     const winner = body.winner
       ? winnerFromLabel(body.winner)
-      : (await priceWinner(cfg, row.symbol, roundIndex)).winner;
+      : (await priceWinner(db, cfg, row.symbol, roundIndex)).winner;
 
     return settleMarket(db, cfg, row.market_id, roundIndex, winner);
   });

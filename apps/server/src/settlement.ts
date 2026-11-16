@@ -16,6 +16,7 @@ import {
 } from "./tx.ts";
 import { decryptPrivateKey } from "./wallet.ts";
 import { describe } from "./users.ts";
+import { ensureRoundPrices } from "./round-prices.ts";
 import type { Db } from "./db.ts";
 
 export interface RoundInfo {
@@ -72,75 +73,38 @@ export function winnerFromLabel(label: string): number {
 }
 
 /**
- * 按链上区块时间取这一轮的开盘价 / 收盘价，判涨跌。
- * 一轮 = 600 块 ≈ 600 秒，所以拿「轮首那一分钟」和「轮末那一分钟」的收盘价对比即可。
+ * 这一轮的锁定价格（开始价）和开奖价格（结束价）从 round_prices 读；
+ * 还没写入时才向 OKX 拉一次并落库。涨跌 = 开奖价 >= 锁定价。
  */
 export async function priceWinner(
+  db: Db,
   cfg: ChainConfig,
   symbol: string,
   roundIndex: number,
-): Promise<{ winner: number; startPrice: number; endPrice: number; startTime: number; endTime: number }> {
-  const market = requireMarket(cfg);
-  const startBlock = Number(
-    (await publicClient.readContract({
-      address: market,
-      abi: POOL_MARKET_ABI,
-      functionName: "roundStart",
-      args: [BigInt(roundIndex)],
-    })) as bigint,
-  );
-  const endBlock = startBlock + 600;
-
-  const [start, end] = await Promise.all([
-    publicClient.getBlock({ blockNumber: BigInt(startBlock) }),
-    publicClient.getBlock({ blockNumber: BigInt(endBlock - 1) }),
-  ]);
-  const startTime = Number(start.timestamp);
-  const endTime = Number(end.timestamp);
-
-  const instId = `${symbol.toUpperCase()}-USDT`;
-  const url =
-    `https://www.okx.com/api/v5/market/history-candles?instId=${instId}&bar=1m` +
-    `&after=${(endTime + 60) * 1000}&limit=30`;
-
-  const response = await fetch(url, { headers: { accept: "application/json" } });
-  if (!response.ok) throw new HttpError(502, `行情接口不可用：HTTP ${response.status}`);
-  const payload = (await response.json()) as { code: string; data?: string[][]; msg?: string };
-  if (payload.code !== "0" || !payload.data?.length) {
-    throw new HttpError(502, `行情接口没有数据：${payload.msg ?? payload.code}`);
-  }
-
-  // OKX 返回 [ts, open, high, low, close, vol, ...]，按时间倒序。
-  const candles = payload.data
-    .map((row) => ({ ts: Number(row[0]) / 1000, close: Number(row[4]) }))
-    .sort((a, b) => a.ts - b.ts);
-
-  // 必须精确拿到「轮首那一分钟」和「轮末那一分钟」的 K 线；缺任何一根就报错，
-  // 绝不用过期 K 线凑数（否则开盘价=收盘价，会永远判涨）。
-  const minuteOf = (ts: number) => Math.floor(ts / 60) * 60;
-  const openMinute = minuteOf(startTime);
-  const closeMinute = minuteOf(endTime);
-  const openCandle = candles.find((candle) => candle.ts === openMinute) ?? null;
-  const closeCandle = candles.find((candle) => candle.ts === closeMinute) ?? null;
-
-  if (!openCandle || !closeCandle) {
-    throw new HttpError(
-      502,
-      `行情覆盖不到这一轮（${instId}）：需要 ${new Date(openMinute * 1000).toISOString()} 与 ` +
-        `${new Date(closeMinute * 1000).toISOString()} 两根 1m K 线。` +
-        `本地 anvil 快进会让链上时间跑到真实时间前面，这种情况请用显式 winner 结算。`,
-    );
+): Promise<{
+  winner: number;
+  lockPrice: number;
+  settlePrice: number;
+  startPrice: number;
+  endPrice: number;
+  startTime: number;
+  endTime: number;
+}> {
+  const row = await ensureRoundPrices(db, cfg, symbol, roundIndex);
+  if (row.lockPrice == null || row.settlePrice == null) {
+    throw new HttpError(502, `第 ${roundIndex} 轮价格还没齐（锁定价 / 开奖价）`);
   }
 
   return {
-    winner: closeCandle.close >= openCandle.close ? SIDE_UP : SIDE_DOWN,
-    startPrice: openCandle.close,
-    endPrice: closeCandle.close,
-    startTime,
-    endTime: Number(closeCandle.ts),
+    winner: row.settlePrice >= row.lockPrice ? SIDE_UP : SIDE_DOWN,
+    lockPrice: row.lockPrice,
+    settlePrice: row.settlePrice,
+    startPrice: row.lockPrice,
+    endPrice: row.settlePrice,
+    startTime: row.lockTime ?? 0,
+    endTime: row.settleTime ?? 0,
   };
 }
-
 export interface SettleResult {
   marketId: number;
   symbol: string;
@@ -247,7 +211,7 @@ export async function settleRound(
       winner = winnerFromLabel(explicitWinners[symbol]);
     } else {
       try {
-        const price = await priceWinner(cfg, symbol, roundIndex);
+        const price = await priceWinner(db, cfg, symbol, roundIndex);
         winner = price.winner;
         prices[symbol] = price;
       } catch (error) {
@@ -350,12 +314,28 @@ export async function claimForUser(
 /** 轮询式自动结算：只处理「已经结束、有下注、还没结算」的轮次，拿不到价格就跳过。 */
 export function startAutoSettler(db: Db, cfg: ChainConfig, intervalMs = 3_000): void {
   let busy = false;
+  /** 每个 (标的, 轮次) 最多 30s 试一次行情，避免每 3s 打一次接口。 */
+  const lockAttempts = new Map<string, number>();
 
   const tick = async () => {
     if (busy) return;
     busy = true;
     try {
       const info = await getRoundInfo(cfg);
+
+      // 先把「当前轮」的锁定价格写下来（轮首那根 1m K 线收盘后就能写）
+      const symbols = [...new Set(listMarkets(db).map((row) => row.symbol))];
+      for (const symbol of symbols) {
+        const key = `${symbol}:${info.currentRound}`;
+        if ((lockAttempts.get(key) ?? 0) + 30_000 > Date.now()) continue;
+        lockAttempts.set(key, Date.now());
+        try {
+          await ensureRoundPrices(db, cfg, symbol, info.currentRound);
+        } catch {
+          // 还没到那一分钟就跳过，之后 tick 再补
+        }
+      }
+
       const finishedRounds = [info.currentRound - 2, info.currentRound - 3].filter((r) => r >= 0);
 
       for (const roundIndex of finishedRounds) {

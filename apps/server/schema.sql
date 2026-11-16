@@ -56,6 +56,20 @@ CREATE TABLE IF NOT EXISTS markets (
   sort_order    INTEGER NOT NULL DEFAULT 0,
   UNIQUE (symbol, bet_token)
 );
+-- 每轮的锁定价格 / 开奖价格（来源 OKX 1m K 线，按链上块时间对齐）
+CREATE TABLE IF NOT EXISTS round_prices (
+  symbol       TEXT NOT NULL,        -- 标的，如 BTC
+  round_id     INTEGER NOT NULL,     -- 合约 roundIndex
+  start_block  INTEGER,              -- 轮首块
+  lock_time    INTEGER,              -- 锁定价格对应的 K 线时间（秒）
+  lock_price   TEXT,                 -- 锁定价格 = 轮次开始那一分钟收盘价
+  settle_time  INTEGER,              -- 开奖价格对应的 K 线时间（秒）
+  settle_price TEXT,                 -- 开奖价格 = 轮次结束那一分钟收盘价
+  source       TEXT NOT NULL DEFAULT 'okx-1m',
+  updated_at   INTEGER,
+  PRIMARY KEY (symbol, round_id)
+);
+
 -- 每轮结算结果
 CREATE TABLE IF NOT EXISTS rounds (
   market_id    TEXT NOT NULL,
