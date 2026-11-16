@@ -40,7 +40,7 @@ export function TopBar() {
   return (
     <header className="relative z-40 flex h-[52px] shrink-0 items-center gap-2 border-b border-line bg-ink px-3">
       <div className="flex shrink-0 items-center gap-3">
-        <Link to="/discover" className="flex items-center" aria-label="TikTap 首页">
+        <Link to="/" className="flex items-center" aria-label="回到首页">
           <Logo size="md" />
         </Link>
         <span className="hidden h-4 w-px bg-line2 sm:block" />
