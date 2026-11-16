@@ -1,7 +1,7 @@
 import type { Db } from "./db.ts";
 import type { MarketRow } from "./markets.ts";
 import type { MarketOpinion } from "../../../packages/shared/src/api-types.ts";
-import { displayName, gradientFor, relativeTime } from "./activity.ts";
+import { displayName, formatAmount, gradientFor, relativeTime } from "./activity.ts";
 import { HttpError } from "./http.ts";
 
 /**
@@ -17,30 +17,61 @@ const lastPost = new Map<string, number>();
 interface OpinionRow {
   id: number;
   address: string;
+  symbol: string;
+  market_id: number;
+  bet_token: string;
   body: string;
   side: number | null;
   round_id: number | null;
   created_at: number;
-  bet_token: string;
   x_name: string | null;
   x_handle: string | null;
 }
 
-export function readOpinions(
-  db: Db,
-  marketRow: MarketRow,
-  limit = 50,
-): MarketOpinion[] {
-  const rows = db
-    .prepare(
-      "SELECT o.id, o.address, o.body, o.side, o.round_id, o.created_at, o.bet_token, " +
-        "u.x_name, u.x_handle " +
-        "FROM opinions o LEFT JOIN users u ON u.id = o.user_id " +
-        "WHERE o.market_id = ? ORDER BY o.created_at DESC LIMIT ?",
-    )
-    .all(marketRow.market_id, Math.min(Math.max(limit, 1), 200)) as unknown as OpinionRow[];
+/**
+ * 每条观点作者在「这个市场 + 这一轮」的下注总额（含单位），没有下注就不返回。
+ */
+function stakesForOpinions(db: Db, rows: OpinionRow[]): Map<string, string> {
+  const pairs = new Map<string, { marketId: number; roundId: number; symbol: string; token: string }>();
+  for (const row of rows) {
+    if (row.round_id === null) continue;
+    pairs.set(`${row.market_id}:${row.round_id}`, {
+      marketId: row.market_id,
+      roundId: row.round_id,
+      symbol: row.symbol,
+      token: row.bet_token,
+    });
+  }
 
-  return rows.map((row) => ({
+  const result = new Map<string, string>();
+  for (const pair of pairs.values()) {
+    const bets = db
+      .prepare(
+        "SELECT address, amount_wei FROM bets WHERE market_id = ? AND round_id = ?",
+      )
+      .all(pair.marketId, pair.roundId) as Array<{ address: string; amount_wei: string }>;
+
+    const byAddress = new Map<string, bigint>();
+    for (const bet of bets) {
+      const key = bet.address.toLowerCase();
+      byAddress.set(key, (byAddress.get(key) ?? 0n) + BigInt(bet.amount_wei || "0"));
+    }
+    for (const [address, wei] of byAddress) {
+      if (wei > 0n) {
+        result.set(`${address}:${pair.marketId}:${pair.roundId}`, `${formatAmount(wei.toString())} ${pair.token}`);
+      }
+    }
+  }
+  return result;
+}
+
+function toOpinion(row: OpinionRow, stakes: Map<string, string>): MarketOpinion {
+  const stake =
+    row.round_id === null
+      ? undefined
+      : stakes.get(`${row.address.toLowerCase()}:${row.market_id}:${row.round_id}`);
+
+  return {
     id: String(row.id),
     address: row.address,
     name: displayName({
@@ -52,10 +83,30 @@ export function readOpinions(
     body: row.body,
     side: row.side === null ? null : row.side === 0 ? "long" : "short",
     roundId: row.round_id,
+    symbol: row.symbol,
     betToken: row.bet_token,
+    betAmount: stake,
     time: relativeTime(row.created_at),
     followed: false,
-  }));
+  };
+}
+
+export function readOpinions(
+  db: Db,
+  marketRow: MarketRow,
+  limit = 50,
+): MarketOpinion[] {
+  const rows = db
+    .prepare(
+      "SELECT o.id, o.address, o.symbol, o.market_id, o.bet_token, o.body, o.side, o.round_id, o.created_at, " +
+        "u.x_name, u.x_handle " +
+        "FROM opinions o LEFT JOIN users u ON u.id = o.user_id " +
+        "WHERE o.market_id = ? ORDER BY o.created_at DESC LIMIT ?",
+    )
+    .all(marketRow.market_id, Math.min(Math.max(limit, 1), 200)) as unknown as OpinionRow[];
+
+  const stakes = stakesForOpinions(db, rows);
+  return rows.map((row) => toOpinion(row, stakes));
 }
 
 /** 跨下注代币：某个标的的全部观点（左侧动态用）。 */
@@ -66,7 +117,7 @@ export function readOpinionsBySymbol(
 ): MarketOpinion[] {
   const rows = db
     .prepare(
-      "SELECT o.id, o.address, o.body, o.side, o.round_id, o.created_at, o.bet_token, " +
+      "SELECT o.id, o.address, o.symbol, o.market_id, o.bet_token, o.body, o.side, o.round_id, o.created_at, " +
         "u.x_name, u.x_handle " +
         "FROM opinions o LEFT JOIN users u ON u.id = o.user_id " +
         "WHERE o.symbol = ? ORDER BY o.created_at DESC LIMIT ?",
@@ -76,22 +127,8 @@ export function readOpinionsBySymbol(
       Math.min(Math.max(limit, 1), 200),
     ) as unknown as OpinionRow[];
 
-  return rows.map((row) => ({
-    id: String(row.id),
-    address: row.address,
-    name: displayName({
-      address: row.address,
-      x_name: row.x_name,
-      x_handle: row.x_handle,
-    }),
-    avatar: gradientFor(row.address),
-    body: row.body,
-    side: row.side === null ? null : row.side === 0 ? "long" : "short",
-    roundId: row.round_id,
-    betToken: row.bet_token,
-    time: relativeTime(row.created_at),
-    followed: false,
-  }));
+  const stakes = stakesForOpinions(db, rows);
+  return rows.map((row) => toOpinion(row, stakes));
 }
 
 export function createOpinion(
@@ -149,6 +186,7 @@ export function createOpinion(
     body,
     side: side === null ? null : side === 0 ? "long" : "short",
     roundId: input.roundId ?? null,
+    symbol: marketRow.symbol,
     betToken: marketRow.bet_token,
     time: relativeTime(now),
     followed: false,

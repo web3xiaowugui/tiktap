@@ -267,8 +267,12 @@ export interface MarketOpinion {
   side: Side | null;
   /** 发布时所在轮次，前端用来筛「仅看本轮」。 */
   roundId: number | null;
-  /** 这条观点发在哪个下注代币市场（跨市场聚合时用）。 */
+  /** 观点所在市场：标的。 */
+  symbol?: string;
+  /** 这条观点发在哪个下注代币市场。 */
   betToken?: string;
+  /** 作者在这个市场、这一轮的下注总额（带单位），没下注就是空。 */
+  betAmount?: string;
   time: string;
   followed?: boolean;
 }

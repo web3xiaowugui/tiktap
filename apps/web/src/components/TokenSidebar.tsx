@@ -233,8 +233,18 @@ export function TokenSidebar({ width }: { width: number }) {
                 <p className="mt-1 line-clamp-2 break-words pl-[32px] text-[12px] leading-relaxed text-muted">
                   {item.body}
                 </p>
-                <div className="num mt-0.5 pl-[32px] text-[10px] text-muted2">
-                  {item.betToken} · 第 {item.roundId ?? "—"} 轮
+                <div className="num mt-0.5 flex flex-wrap items-center gap-x-1.5 pl-[32px] text-[10px] text-muted2">
+                  <span className="text-white/70">
+                    {item.symbol}/{item.betToken}
+                  </span>
+                  <span>·</span>
+                  <span>第 {item.roundId ?? "—"} 轮</span>
+                  {item.betAmount && (
+                    <>
+                      <span>·</span>
+                      <span className="text-muted">下注 {item.betAmount}</span>
+                    </>
+                  )}
                 </div>
               </div>
             ))}
