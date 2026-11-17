@@ -25,7 +25,10 @@ export function TopBar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const balanceTokens = orderBalanceTokens(tokens);
+  // WOKB 只是内部载体：对用户只显示一个 OKB，原生 + WOKB 合计。
+  const okbTokenBalance = tokens.find((token) => token.symbol === "OKB")?.balance ?? 0;
+  const okbTotal = nativeBalance + okbTokenBalance;
+  const balanceTokens = orderBalanceTokens(tokens).filter((token) => token.symbol !== "OKB");
 
   const openSearch = useCallback(() => setSearchOpen(true), []);
   useSearchHotkey(openSearch);
@@ -91,10 +94,10 @@ export function TopBar() {
         <EnvironmentSelect />
 
         <span className="hidden items-center gap-2.5 lg:flex">
-          <span className="flex items-center gap-1" title="原生 OKB（gas）">
+          <span className="flex items-center gap-1" title="OKB 余额">
             <TokenIcon icon={OKB_ICON} size={13} />
             <span className="num text-[10.5px] text-white">
-              {fmtTokenAmount(nativeBalance)}
+              {fmtTokenAmount(okbTotal)}
             </span>
             <span className="text-[9px] text-muted2">OKB</span>
           </span>
@@ -102,15 +105,13 @@ export function TopBar() {
             <span
               key={token.symbol}
               className="flex items-center gap-1"
-              title={token.symbol === "OKB" ? "WOKB 下注余额" : `${token.name} 余额`}
+              title={`${token.name} 余额`}
             >
               <TokenIcon icon={token.icon} size={13} />
               <span className="num text-[10.5px] text-white">
                 {fmtTokenAmount(token.balance)}
               </span>
-              <span className="text-[9px] text-muted2">
-                {token.symbol === "OKB" ? "WOKB" : token.symbol}
-              </span>
+              <span className="text-[9px] text-muted2">{token.symbol}</span>
             </span>
           ))}
         </span>
