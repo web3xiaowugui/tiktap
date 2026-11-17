@@ -138,6 +138,37 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
   return withAddressLock(user.address, async () => {
     const wallet = walletFor(pkey);
 
+    const unwrapAllWokb = async (reason: string) => {
+      if (!isOkb) return;
+      const balance = (await publicClientFor().readContract({
+        address: token,
+        abi: WOKB_ABI,
+        functionName: "balanceOf",
+        args: [user.address],
+      })) as bigint;
+      if (balance <= 0n) return;
+      const hash = await wallet.writeContract({
+        address: token,
+        abi: WOKB_ABI,
+        functionName: "withdraw",
+        args: [balance],
+        chain: wallet.chain,
+        account: wallet.account!,
+      });
+      const txId = recordPendingTx(db, {
+        userId: user.id,
+        kind: "unwrap",
+        txHash: hash,
+        payload: { token, amountWei: balance.toString(), reason },
+      });
+      const receipt = await publicClientFor().waitForTransactionReceipt({ hash });
+      if (receipt.status === "success") {
+        markTxConfirmed(db, txId);
+      } else {
+        markTxFailed(db, txId, `${reason} unwrap 回滚`);
+      }
+    };
+
     if (isOkb && wrapWei > 0n) {
       const nativeBalance = await publicClientFor().getBalance({ address: user.address });
       if (nativeBalance < wrapWei) {
@@ -168,7 +199,8 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
       markTxConfirmed(db, txId);
     }
 
-    // 首次下注前补一次无限授权，之后不再重复。
+    try {
+      // 首次下注前补一次无限授权，之后不再重复。
     let approveTxHash: string | null = null;
     const allowance = (await publicClientFor().readContract({
       address: token,
@@ -262,6 +294,15 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
       status: "confirmed",
     });
 
+    // 成功下注后如果 WOKB 还有剩余（例如用了历史余额），立刻赎回，保持内部载体归零。
+    if (isOkb) {
+      try {
+        await unwrapAllWokb("bet_success_leftover");
+      } catch (cleanupError) {
+        console.warn("[bet] 下注成功后 WOKB 清理失败：", describe(cleanupError));
+      }
+    }
+
     return {
       txHash: hash,
       marketId,
@@ -271,6 +312,16 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
       status: "confirmed" as const,
       approveTxHash,
     };
+    } catch (error) {
+      if (isOkb) {
+        try {
+          await unwrapAllWokb("bet_failed");
+        } catch (cleanupError) {
+          console.warn("[bet] 下注失败后 WOKB 自动赎回失败：", describe(cleanupError));
+        }
+      }
+      throw error;
+    }
   });
 }
 

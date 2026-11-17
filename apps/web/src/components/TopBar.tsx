@@ -25,9 +25,7 @@ export function TopBar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  // WOKB 只是内部载体：对用户只显示一个 OKB，原生 + WOKB 合计。
-  const okbTokenBalance = tokens.find((token) => token.symbol === "OKB")?.balance ?? 0;
-  const okbTotal = nativeBalance + okbTokenBalance;
+  // WOKB 只是内部载体，页面只展示原生 OKB。
   const balanceTokens = orderBalanceTokens(tokens).filter((token) => token.symbol !== "OKB");
 
   const openSearch = useCallback(() => setSearchOpen(true), []);
@@ -97,7 +95,7 @@ export function TopBar() {
           <span className="flex items-center gap-1" title="OKB 余额">
             <TokenIcon icon={OKB_ICON} size={13} />
             <span className="num text-[10.5px] text-white">
-              {fmtTokenAmount(okbTotal)}
+              {fmtTokenAmount(nativeBalance)}
             </span>
             <span className="text-[9px] text-muted2">OKB</span>
           </span>

@@ -33,6 +33,7 @@ export const ERC20_ABI = parseAbi([
 ]);
 
 export const WOKB_ABI = parseAbi([
+  "function balanceOf(address account) view returns (uint256)",
   "function deposit() payable",
   "function withdraw(uint256 amount)",
 ]);

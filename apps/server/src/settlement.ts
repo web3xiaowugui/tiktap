@@ -348,30 +348,38 @@ export async function claimForUser(
 
     applyClaim(db, marketId, roundIndex, user.address, hash);
 
-    // OKB 市场赔的是 WOKB，领完立刻赎回成原生 OKB。
+    // OKB 市场赔的是 WOKB，领完把该地址的 WOKB 全部赎回成原生 OKB（含历史残留）。
     if (row.bet_token.toUpperCase() === "OKB" && row.token_address) {
       try {
-        const unwrapHash = await wallet.writeContract({
+        const wokbBalance = (await publicClientFor().readContract({
           address: row.token_address as Address,
           abi: WOKB_ABI,
-          functionName: "withdraw",
-          args: [amountWei],
-          chain: wallet.chain,
-          account: wallet.account!,
-        });
-        const unwrapTxId = recordPendingTx(db, {
-          userId: user.id,
-          kind: "unwrap",
-          txHash: unwrapHash,
-          payload: { token: row.token_address, amountWei: amountWei.toString() },
-        });
-        const unwrapReceipt = await publicClientFor().waitForTransactionReceipt({
-          hash: unwrapHash,
-        });
-        if (unwrapReceipt.status === "success") {
-          markTxConfirmed(db, unwrapTxId);
-        } else {
-          markTxFailed(db, unwrapTxId, "unwrap 回滚");
+          functionName: "balanceOf",
+          args: [user.address],
+        })) as bigint;
+        if (wokbBalance > 0n) {
+          const unwrapHash = await wallet.writeContract({
+            address: row.token_address as Address,
+            abi: WOKB_ABI,
+            functionName: "withdraw",
+            args: [wokbBalance],
+            chain: wallet.chain,
+            account: wallet.account!,
+          });
+          const unwrapTxId = recordPendingTx(db, {
+            userId: user.id,
+            kind: "unwrap",
+            txHash: unwrapHash,
+            payload: { token: row.token_address, amountWei: wokbBalance.toString() },
+          });
+          const unwrapReceipt = await publicClientFor().waitForTransactionReceipt({
+            hash: unwrapHash,
+          });
+          if (unwrapReceipt.status === "success") {
+            markTxConfirmed(db, unwrapTxId);
+          } else {
+            markTxFailed(db, unwrapTxId, "unwrap 回滚");
+          }
         }
       } catch (error) {
         console.warn("[claim] WOKB unwrap 失败（奖励仍在用户 WOKB 余额里）：", describe(error));
