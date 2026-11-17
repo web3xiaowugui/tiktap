@@ -139,6 +139,22 @@ async function topUpGas(
   return wei.toString();
 }
 
+/**
+ * 用户地址余额不足以付 gas 时自动补一点。
+ *
+ * 主要给本地 Anvil 重启后复用旧数据库里的托管地址用：建号时充过 gas 的地址，
+ * 在新链上余额是 0，首次 mint / 下注会报 Insufficient funds。
+ */
+export async function ensureUserGas(
+  cfg: ReturnType<typeof readConfig>,
+  address: `0x${string}`,
+): Promise<string | null> {
+  if (cfg.gasTopUpWei <= 0n || !cfg.operatorPkey) return null;
+  const balance = await publicClient.getBalance({ address });
+  if (balance >= cfg.gasTopUpWei / 4n) return null;
+  return topUpGas(cfg, address, cfg.gasTopUpWei);
+}
+
 export function describe(error: unknown): string {
   if (error instanceof Error) {
     const cause = (error as { cause?: unknown }).cause;

@@ -2,7 +2,7 @@ import { parseUnits, type Address } from "viem";
 import { publicClient } from "./chain.ts";
 import { ERC20_ABI, POOL_MARKET_ABI, sideFromLabel } from "./contracts.ts";
 import { HttpError } from "./http.ts";
-import { describe } from "./users.ts";
+import { describe, ensureUserGas } from "./users.ts";
 import {
   markTxConfirmed,
   markTxFailed,
@@ -126,6 +126,8 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
   }
 
   const pkey = decryptPrivateKey(user.enc_pkey);
+
+  await ensureUserGas(cfg, user.address);
 
   return withAddressLock(user.address, async () => {
     const wallet = walletFor(pkey);
@@ -254,6 +256,8 @@ export async function mintForUser(
   }
 
   const pkey = decryptPrivateKey(user.enc_pkey);
+
+  await ensureUserGas(cfg, user.address);
 
   return withAddressLock(user.address, async () => {
     const wallet = walletFor(pkey);
