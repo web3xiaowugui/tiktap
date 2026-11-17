@@ -48,13 +48,11 @@ export interface XConfig {
 
 export function readXConfig(env: AppEnv = currentEnv()): XConfig {
   const cfg = readConfig(env);
-  const prefix = env === "testnet" ? "TESTNET_" : "";
   return {
     clientId: cfg.xClientId,
     clientSecret: cfg.xClientSecret,
     redirectUri: (
-      process.env[`${prefix}X_REDIRECT_URI`] ??
-      `${cfg.publicBaseUrl}/api/auth/x/callback?env=${env}`
+      process.env.X_REDIRECT_URI ?? `${cfg.publicBaseUrl}/api/auth/x/callback`
     ).trim(),
     webUrl: cfg.webBaseUrl,
   };
