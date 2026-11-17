@@ -111,7 +111,19 @@ export function registerRoutes(router: Router, db: Db): void {
   // ---- 交易对 / 侧栏 ----
   router.get("/api/tokens", () => TOKENS);
   router.get("/api/tokens/:symbol", ({ params }) => requireToken(params.symbol));
-  router.get("/api/bet-tokens", () => BET_TOKENS);
+  router.get("/api/bet-tokens", () => {
+    const enabled = new Set(
+      (
+        db
+          .prepare(
+            "SELECT DISTINCT bet_token FROM markets WHERE env = ? AND enabled = 1 AND token_address IS NOT NULL",
+          )
+          .all(currentEnv()) as Array<{ bet_token: string }>
+      ).map((row) => row.bet_token),
+    );
+    return BET_TOKENS.filter((token) => enabled.has(token.symbol));
+  });
+
   router.get("/api/sidebar-menu", () => SIDEBAR_MENU);
   router.get("/api/leaderboard", () => LEADERBOARD);
 
@@ -156,13 +168,16 @@ export function registerRoutes(router: Router, db: Db): void {
     };
   });
 
-  // ---- 领体验币（用户地址自己 mint）----
+  // ---- 领体验币：只发 TEST ----
   router.post("/api/faucet", async ({ req }) => {
     const body = await readJson<{ address?: string; betToken?: string; amount?: string | number }>(req);
     if (!body.address) throw new HttpError(400, "缺少 address");
     if (!body.betToken) throw new HttpError(400, "缺少 betToken");
     if (body.amount === undefined) throw new HttpError(400, "缺少 amount");
-    return mintForUser(db, body.address, body.betToken, String(body.amount));
+    if (body.betToken.trim().toUpperCase() !== "TEST") {
+      throw new HttpError(400, "领测试币只发 TEST");
+    }
+    return mintForUser(db, body.address, "TEST", String(body.amount));
   });
 
   // ---- 下注（后端代签，txHash 落库）----

@@ -21,10 +21,9 @@ contract Deploy is Script {
 
         vm.startBroadcast(deployerKey);
 
-        // 体验币 TEST + 两个本地 mock 的 OKB / BEM（真实网络换成真实代币地址）
+        // 体验币 TEST + BEM（BEM 是 ERC20；OKB 是原生币，不再部署 mock）
         testToken = new TikTapToken("TikTap Test", "TEST", mintCap);
-        TikTapToken okb = new TikTapToken("OKB (mock)", "OKB", mintCap);
-        TikTapToken bem = new TikTapToken("BEM (mock)", "BEM", mintCap);
+        TikTapToken bem = new TikTapToken("BEM", "BEM", mintCap);
 
         market = new PoolMarket(operator);
 
@@ -33,7 +32,6 @@ contract Deploy is Script {
         console2.log("market", address(market));
         console2.log("operator", operator);
         console2.log("token TEST", address(testToken));
-        console2.log("token OKB(mock)", address(okb));
-        console2.log("token BEM(mock)", address(bem));
+        console2.log("token BEM", address(bem));
     }
 }

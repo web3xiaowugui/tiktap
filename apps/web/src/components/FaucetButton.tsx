@@ -7,22 +7,23 @@ import { useToast } from "@/context/ToastContext";
 import { ENVIRONMENT_LABELS, readEnvironment } from "@/lib/environment";
 
 const CLAIM_AMOUNT = 100;
+const FAUCET_SYMBOL = "TEST";
 
 /**
- * 顶栏「领测试币」：点开弹框展示本次可领数量，确认后调 /api/faucet。
- * 领的是当前下注代币（默认 TEST），领完刷新余额。
+ * 顶栏「领测试币」：只发 TEST，不跟随当前下注代币。
+ * 点开弹框展示本次可领数量，确认后调 /api/faucet，领完刷新余额。
  */
 export function FaucetButton() {
   const { user } = useAuth();
-  const { selected, reloadBalances } = useBetToken();
+  const { tokens, reloadBalances } = useBetToken();
   const { push } = useToast();
 
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const symbol = selected?.symbol ?? "TEST";
-  const balance = selected?.balance;
+  const symbol = FAUCET_SYMBOL;
+  const balance = tokens.find((token) => token.symbol === FAUCET_SYMBOL)?.balance;
   const environment = readEnvironment();
 
   useEffect(() => {

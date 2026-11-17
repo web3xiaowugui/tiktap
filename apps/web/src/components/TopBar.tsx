@@ -15,11 +15,12 @@ import { fmtTokenAmount, shortAddress } from "@/lib/format";
 import { orderBalanceTokens } from "@/lib/tokenOrder";
 
 const DEMO_AVATAR = "linear-gradient(135deg,#5eead4,#2563eb 55%,#4c1d95)";
+const OKB_ICON = { bg: "linear-gradient(135deg,#3a3d48,#08080a 72%)", glyph: "O" };
 
 export function TopBar() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
-  const { tokens } = useBetToken();
+  const { tokens, nativeBalance } = useBetToken();
   const { push } = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -90,6 +91,13 @@ export function TopBar() {
         <EnvironmentSelect />
 
         <span className="hidden items-center gap-2.5 lg:flex">
+          <span className="flex items-center gap-1" title="原生 OKB（gas）">
+            <TokenIcon icon={OKB_ICON} size={13} />
+            <span className="num text-[10.5px] text-white">
+              {fmtTokenAmount(nativeBalance)}
+            </span>
+            <span className="text-[9px] text-muted2">OKB</span>
+          </span>
           {balanceTokens.map((token) => (
             <span
               key={token.symbol}

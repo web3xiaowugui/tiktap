@@ -227,7 +227,7 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
   });
 }
 
-/** 领体验币：用用户自己的地址发 mint（gas 也由用户地址出）。 */
+/** 领体验币：只允许 TEST，用用户自己的地址发 mint。 */
 export async function mintForUser(
   db: Db,
   address: string,
@@ -235,6 +235,9 @@ export async function mintForUser(
   amount: string,
 ): Promise<{ txHash: string; amountWei: string }> {
   const cfg = readConfig();
+  if (betToken.trim().toUpperCase() !== "TEST") {
+    throw new HttpError(400, "领测试币只发 TEST");
+  }
 
   const user = db
     .prepare("SELECT id, address, enc_pkey FROM users WHERE env = ? AND LOWER(address) = LOWER(?)")
