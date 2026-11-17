@@ -1,24 +1,46 @@
 import { createPublicClient, defineChain, http } from "viem";
+import { readConfig } from "./config.ts";
+import { currentEnv, type AppEnv } from "./runtime.ts";
 
-export const RPC_URL = process.env.RPC_URL ?? "http://127.0.0.1:8545";
-export const CHAIN_ID = Number(process.env.CHAIN_ID ?? 195);
+interface EnvChain {
+  chain: ReturnType<typeof defineChain>;
+  publicClient: ReturnType<typeof createPublicClient>;
+  rpcUrl: string;
+  chainId: number;
+}
 
-/** X Layer（默认测试网 195）。本地开发时把 RPC_URL 指向 anvil。 */
-export const xlayer = defineChain({
-  id: CHAIN_ID,
-  name: "X Layer",
-  nativeCurrency: { name: "OKB", symbol: "OKB", decimals: 18 },
-  rpcUrls: { default: { http: [RPC_URL] } },
-});
+const cache = new Map<AppEnv, EnvChain>();
 
-export const publicClient = createPublicClient({
-  chain: xlayer,
-  transport: http(RPC_URL, { timeout: 10_000, retryCount: 2 }),
-});
+function build(env: AppEnv): EnvChain {
+  const cfg = readConfig(env);
+  const chain = defineChain({
+    id: cfg.chainId,
+    name: env === "testnet" ? "X Layer Testnet" : "X Layer",
+    nativeCurrency: { name: "OKB", symbol: "OKB", decimals: 18 },
+    rpcUrls: { default: { http: [cfg.rpcUrl] } },
+  });
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(cfg.rpcUrl, { timeout: 10_000, retryCount: 2 }),
+  });
+  return { chain, publicClient, rpcUrl: cfg.rpcUrl, chainId: cfg.chainId };
+}
 
-export async function tryGetBlockNumber(): Promise<string | null> {
+export function envChain(env: AppEnv = currentEnv()): EnvChain {
+  const cached = cache.get(env);
+  if (cached) return cached;
+  const built = build(env);
+  cache.set(env, built);
+  return built;
+}
+
+export function publicClientFor(env: AppEnv = currentEnv()): ReturnType<typeof createPublicClient> {
+  return envChain(env).publicClient;
+}
+
+export async function tryGetBlockNumber(env: AppEnv = currentEnv()): Promise<string | null> {
   try {
-    return (await publicClient.getBlockNumber()).toString();
+    return (await publicClientFor(env).getBlockNumber()).toString();
   } catch {
     return null;
   }

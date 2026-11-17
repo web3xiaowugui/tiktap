@@ -1,4 +1,5 @@
 import type { Db } from "./db.ts";
+import { currentEnv } from "./runtime.ts";
 import type { MarketRow } from "./markets.ts";
 import type { MarketOpinion } from "../../../packages/shared/src/api-types.ts";
 import { displayName, formatAmount, gradientFor, relativeTime } from "./activity.ts";
@@ -69,9 +70,13 @@ export function readOpinions(
   const rows = db
     .prepare(
       `SELECT ${SELECT_COLUMNS} FROM opinions o LEFT JOIN users u ON u.id = o.user_id ` +
-        "WHERE o.market_id = ? ORDER BY o.created_at DESC LIMIT ?",
+        "WHERE o.env = ? AND o.market_id = ? ORDER BY o.created_at DESC LIMIT ?",
     )
-    .all(marketRow.market_id, Math.min(Math.max(limit, 1), 200)) as unknown as OpinionRow[];
+    .all(
+      currentEnv(),
+      marketRow.market_id,
+      Math.min(Math.max(limit, 1), 200),
+    ) as unknown as OpinionRow[];
 
   return rows.map(toOpinion);
 }
@@ -85,9 +90,10 @@ export function readOpinionsBySymbol(
   const rows = db
     .prepare(
       `SELECT ${SELECT_COLUMNS} FROM opinions o LEFT JOIN users u ON u.id = o.user_id ` +
-        "WHERE o.symbol = ? ORDER BY o.created_at DESC LIMIT ?",
+        "WHERE o.env = ? AND o.symbol = ? ORDER BY o.created_at DESC LIMIT ?",
     )
     .all(
+      currentEnv(),
       symbol.toUpperCase(),
       Math.min(Math.max(limit, 1), 200),
     ) as unknown as OpinionRow[];
@@ -116,15 +122,15 @@ function readPosition(
     before === undefined
       ? db
           .prepare(
-            "SELECT side, amount_wei FROM bets WHERE market_id = ? AND round_id = ? AND address = ?",
+            "SELECT side, amount_wei FROM bets WHERE env = ? AND market_id = ? AND round_id = ? AND address = ?",
           )
-          .all(marketId, roundId, address.toLowerCase())
+          .all(currentEnv(), marketId, roundId, address.toLowerCase())
       : db
           .prepare(
-            "SELECT side, amount_wei FROM bets WHERE market_id = ? AND round_id = ? AND address = ? " +
+            "SELECT side, amount_wei FROM bets WHERE env = ? AND market_id = ? AND round_id = ? AND address = ? " +
               "AND created_at <= ?",
           )
-          .all(marketId, roundId, address.toLowerCase(), before)
+          .all(currentEnv(), marketId, roundId, address.toLowerCase(), before)
   ) as Array<{
     side: number;
     amount_wei: string;
@@ -166,9 +172,9 @@ export function backfillOpinionSnapshots(db: Db): number {
   const rows = db
     .prepare(
       "SELECT id, market_id, round_id, address, created_at FROM opinions " +
-        "WHERE bet_count IS NULL AND round_id IS NOT NULL",
+        "WHERE env = ? AND bet_count IS NULL AND round_id IS NOT NULL",
     )
-    .all() as Array<{
+    .all(currentEnv()) as Array<{
     id: number;
     market_id: number;
     round_id: number;
@@ -178,7 +184,7 @@ export function backfillOpinionSnapshots(db: Db): number {
   if (rows.length === 0) return 0;
 
   const update = db.prepare(
-    "UPDATE opinions SET bet_amount_wei = ?, bet_side = ?, bet_count = ? WHERE id = ?",
+    "UPDATE opinions SET bet_amount_wei = ?, bet_side = ?, bet_count = ? WHERE env = ? AND id = ?",
   );
   for (const row of rows) {
     const position = readPosition(
@@ -188,7 +194,7 @@ export function backfillOpinionSnapshots(db: Db): number {
       row.address,
       row.created_at,
     );
-    update.run(position.amountWei ?? "0", position.side, position.count, row.id);
+    update.run(position.amountWei ?? "0", position.side, position.count, currentEnv(), row.id);
   }
   return rows.length;
 }
@@ -199,8 +205,8 @@ export function createOpinion(
   input: { address: string; body: string; side?: string | null; roundId?: number | null },
 ): MarketOpinion {
   const user = db
-    .prepare("SELECT id, address, x_name, x_handle FROM users WHERE LOWER(address) = LOWER(?)")
-    .get(input.address) as
+    .prepare("SELECT id, address, x_name, x_handle FROM users WHERE env = ? AND LOWER(address) = LOWER(?)")
+    .get(currentEnv(), input.address) as
     | { id: number; address: string; x_name: string | null; x_handle: string | null }
     | undefined;
   if (!user) throw new HttpError(404, `用户不存在：${input.address}，先登录`);
@@ -223,11 +229,12 @@ export function createOpinion(
 
   const result = db
     .prepare(
-      "INSERT INTO opinions (user_id, address, market_id, symbol, bet_token, round_id, " +
+      "INSERT INTO opinions (env, user_id, address, market_id, symbol, bet_token, round_id, " +
         "bet_amount_wei, bet_side, bet_count, body, side, created_at) " +
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .run(
+      currentEnv(),
       user.id,
       user.address.toLowerCase(),
       marketRow.market_id,

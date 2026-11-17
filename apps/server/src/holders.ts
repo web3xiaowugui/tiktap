@@ -1,4 +1,5 @@
 import type { Db } from "./db.ts";
+import { currentEnv } from "./runtime.ts";
 import type { MarketRow } from "./markets.ts";
 import { SIDE_DOWN } from "./contracts.ts";
 import type { Holder } from "../../../packages/shared/src/api-types.ts";
@@ -46,10 +47,10 @@ export function readRoundHolders(
       "SELECT b.address, b.side, b.amount_wei, b.payout_wei, b.winner_side, b.created_at, " +
         "u.x_name, u.x_handle " +
         "FROM bets b LEFT JOIN users u ON u.id = b.user_id " +
-        "WHERE b.market_id = ? AND b.round_id = ? " +
+        "WHERE b.env = ? AND b.market_id = ? AND b.round_id = ? " +
         "ORDER BY b.created_at DESC LIMIT 500",
     )
-    .all(marketRow.market_id, roundIndex) as unknown as BetRow[];
+    .all(currentEnv(), marketRow.market_id, roundIndex) as unknown as BetRow[];
 
   const byAddress = new Map<string, Aggregate>();
 

@@ -19,16 +19,26 @@ import type {
   Timeframe,
   Token,
 } from "./types";
+import { readEnvironment } from "@/lib/environment";
 
 /**
  * Every screen talks to this module only. All of it is now served by
- * `apps/server` over `/api` (同一份 mock 数据在后端生成)。
+ * `apps/server` over `/api`（同一个后端、同一个库，按 env 参数隔离）。
+ *
+ *   ?env=dev     -> 本地 Anvil
+ *   ?env=testnet -> X Layer Testnet
  */
-
 const API_BASE = "/api";
 
+function withEnvironment(path: string): string {
+  const [pathname, search = ""] = path.split("?");
+  const params = new URLSearchParams(search);
+  params.set("env", readEnvironment());
+  return `${API_BASE}${pathname}?${params.toString()}`;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(withEnvironment(path), {
     headers: { "Content-Type": "application/json" },
     cache: "no-store",
     ...init,

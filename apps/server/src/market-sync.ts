@@ -1,9 +1,10 @@
-import { publicClient } from "./chain.ts";
+import { publicClientFor } from "./chain.ts";
 import { POOL_MARKET_ABI } from "./contracts.ts";
 import { HttpError } from "./http.ts";
 import { listMarkets } from "./markets.ts";
 import { readConfig, requireOperator, walletFor, type ChainConfig } from "./tx.ts";
 import type { Db } from "./db.ts";
+import { currentEnv } from "./runtime.ts";
 
 /**
  * 把 markets 表里的「标的×代币」对同步到链上：
@@ -24,8 +25,8 @@ export async function syncMarkets(db: Db): Promise<{
 
   for (const [symbol, address] of Object.entries(cfg.tokens)) {
     db.prepare(
-      "UPDATE markets SET token_address = ? WHERE bet_token = ?",
-    ).run(address, symbol);
+      "UPDATE markets SET token_address = ? WHERE env = ? AND bet_token = ?",
+    ).run(address, currentEnv(), symbol);
   }
 
   const operator = walletFor(requireOperator(cfg));
@@ -36,7 +37,7 @@ export async function syncMarkets(db: Db): Promise<{
       continue;
     }
 
-    const [token, enabled] = (await publicClient.readContract({
+    const [token, enabled] = (await publicClientFor().readContract({
       address: cfg.market,
       abi: POOL_MARKET_ABI,
       functionName: "markets",
@@ -55,7 +56,7 @@ export async function syncMarkets(db: Db): Promise<{
       chain: operator.chain,
       account: operator.account!,
     });
-    await publicClient.waitForTransactionReceipt({ hash });
+    await publicClientFor().waitForTransactionReceipt({ hash });
     configured.push(row.market_id);
   }
 
@@ -70,7 +71,7 @@ export async function allowUserOnChain(
   const market = cfg.market;
   if (!market) throw new HttpError(503, "未配置 POOL_MARKET_ADDRESS");
 
-  const already = (await publicClient.readContract({
+  const already = (await publicClientFor().readContract({
     address: market,
     abi: POOL_MARKET_ABI,
     functionName: "allowed",
@@ -87,6 +88,6 @@ export async function allowUserOnChain(
     chain: operator.chain,
     account: operator.account!,
   });
-  await publicClient.waitForTransactionReceipt({ hash });
+  await publicClientFor().waitForTransactionReceipt({ hash });
   return hash;
 }

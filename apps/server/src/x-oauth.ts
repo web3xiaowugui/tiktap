@@ -1,5 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { HttpError } from "./http.ts";
+import { readConfig } from "./config.ts";
+import { currentEnv, type AppEnv } from "./runtime.ts";
 
 /**
  * X（Twitter）OAuth 2.0 授权码流程，带 PKCE。
@@ -44,15 +46,17 @@ export interface XConfig {
   webUrl: string;
 }
 
-export function readXConfig(): XConfig {
-  const baseUrl = (process.env.PUBLIC_BASE_URL ?? "http://127.0.0.1:8787").replace(/\/+$/, "");
+export function readXConfig(env: AppEnv = currentEnv()): XConfig {
+  const cfg = readConfig(env);
+  const prefix = env === "testnet" ? "TESTNET_" : "";
   return {
-    clientId: (process.env.X_CLIENT_ID ?? "").trim(),
-    clientSecret: (process.env.X_CLIENT_SECRET ?? "").trim(),
+    clientId: cfg.xClientId,
+    clientSecret: cfg.xClientSecret,
     redirectUri: (
-      process.env.X_REDIRECT_URI ?? `${baseUrl}/api/auth/x/callback`
+      process.env[`${prefix}X_REDIRECT_URI`] ??
+      `${cfg.publicBaseUrl}/api/auth/x/callback?env=${env}`
     ).trim(),
-    webUrl: (process.env.WEB_BASE_URL ?? "http://127.0.0.1:5173").replace(/\/+$/, ""),
+    webUrl: cfg.webBaseUrl,
   };
 }
 

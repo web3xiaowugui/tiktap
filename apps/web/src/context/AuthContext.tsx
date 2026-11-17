@@ -16,11 +16,16 @@ import {
   startXOAuth,
 } from "@/api";
 import type { AuthUser } from "@/api/types";
+import { readEnvironment } from "@/lib/environment";
 
 
 const STORAGE_KEY = "fomo.demo.auth.v2";
-/** 托管地址单独存一份，换账号登录也不会丢。 */
+/** 托管地址按环境分开缓存：切到测试网时会自动建一个测试网专用地址。 */
 const ADDRESS_KEY = "tiktap.custody.address.v1";
+
+function addressStorageKey(): string {
+  return readEnvironment() === "testnet" ? `${ADDRESS_KEY}.testnet` : ADDRESS_KEY;
+}
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -34,7 +39,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 function readStoredAddress(): string | null {
   try {
-    return localStorage.getItem(ADDRESS_KEY);
+    return localStorage.getItem(addressStorageKey());
   } catch {
     return null;
   }
@@ -42,7 +47,7 @@ function readStoredAddress(): string | null {
 
 function rememberAddress(address: string): void {
   try {
-    localStorage.setItem(ADDRESS_KEY, address);
+    localStorage.setItem(addressStorageKey(), address);
   } catch {
     // non-fatal
   }
@@ -52,7 +57,7 @@ function rememberAddress(address: string): void {
  * 拿到（或创建）这个人的托管钱包地址。
  * 先看本地缓存，再确认后端确实有这个用户，最后才新建 —— 避免每次登录都多造一个号。
  */
-async function ensureCustodialAddress(
+async function createCustodialAddress(
   known?: string,
   profile?: { xId?: string; handle?: string; name?: string },
 ): Promise<string> {
@@ -70,10 +75,14 @@ async function ensureCustodialAddress(
   const candidate = known ?? readStoredAddress();
 
   if (candidate) {
-    const existing = await getUser(candidate);
-    if (existing) {
-      rememberAddress(existing.address);
-      return existing.address;
+    try {
+      const existing = await getUser(candidate);
+      if (existing) {
+        rememberAddress(existing.address);
+        return existing.address;
+      }
+    } catch {
+      // 缓存地址不属于当前环境（例如测试网数据重建过），继续新建。
     }
   }
 
@@ -83,6 +92,23 @@ async function ensureCustodialAddress(
   });
   rememberAddress(created.address);
   return created.address;
+}
+
+let custodyRequest: Promise<string> | null = null;
+
+/**
+ * 同一环境只允许一个建号请求在飞：开发模式下 StrictMode 会重复执行 effect，
+ * 没有这层去重会一次切换就建出两个测试网账号。
+ */
+async function ensureCustodialAddress(
+  known?: string,
+  profile?: { xId?: string; handle?: string; name?: string },
+): Promise<string> {
+  if (custodyRequest) return custodyRequest;
+  custodyRequest = createCustodialAddress(known, profile).finally(() => {
+    custodyRequest = null;
+  });
+  return custodyRequest;
 }
 
 function readInitialUser(): AuthUser | null {
@@ -96,7 +122,9 @@ function readInitialUser(): AuthUser | null {
         typeof parsed.handle === "string" &&
         (parsed.provider === "x" || parsed.provider === "demo")
       ) {
-        return parsed as AuthUser;
+        // 缓存地址只作为候选：初次挂载时向后端确认它属于当前环境，
+        // 旧测试网地址不存在时自动新建并覆盖缓存。
+        return { ...(parsed as AuthUser), address: undefined };
       }
     }
   } catch {

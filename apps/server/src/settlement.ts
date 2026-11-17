@@ -1,5 +1,5 @@
 import { type Address } from "viem";
-import { publicClient, RPC_URL } from "./chain.ts";
+import { publicClientFor } from "./chain.ts";
 import { POOL_MARKET_ABI, SIDE_DOWN, SIDE_UP, SIDE_VOID, sideFromLabel } from "./contracts.ts";
 import { HttpError } from "./http.ts";
 import { listMarkets } from "./markets.ts";
@@ -19,6 +19,7 @@ import { describe } from "./users.ts";
 import { ensureRoundPrices, getRoundPrice } from "./round-prices.ts";
 import { applyClaim, applySettlement } from "./bets.ts";
 import type { Db } from "./db.ts";
+import { currentEnv, runWithEnv } from "./runtime.ts";
 
 export interface RoundInfo {
   blockNumber: number;
@@ -37,7 +38,7 @@ async function readRoundClaimFeeBps(
 ): Promise<number> {
   try {
     return Number(
-      await publicClient.readContract({
+      await publicClientFor().readContract({
         address: market,
         abi: POOL_MARKET_ABI,
         functionName: "roundClaimFeeBps",
@@ -51,21 +52,21 @@ async function readRoundClaimFeeBps(
 
 export async function getRoundInfo(cfg: ChainConfig): Promise<RoundInfo> {
   const market = requireMarket(cfg);
-  const blockNumber = Number(await publicClient.getBlockNumber());
+  const blockNumber = Number(await publicClientFor().getBlockNumber());
   const currentRound = Number(
-    (await publicClient.readContract({
+    (await publicClientFor().readContract({
       address: market,
       abi: POOL_MARKET_ABI,
       functionName: "currentRound",
     })) as bigint,
   );
-  const isBettingOpen = (await publicClient.readContract({
+  const isBettingOpen = (await publicClientFor().readContract({
     address: market,
     abi: POOL_MARKET_ABI,
     functionName: "isBettingOpen",
   })) as boolean;
   const roundStartBlock = Number(
-    (await publicClient.readContract({
+    (await publicClientFor().readContract({
       address: market,
       abi: POOL_MARKET_ABI,
       functionName: "roundStart",
@@ -151,7 +152,7 @@ export async function settleMarket(
   const row = listMarkets(db).find((item) => item.market_id === marketId);
   if (!row) throw new HttpError(404, `未知 marketId：${marketId}`);
 
-  const [upAmount, downAmount, , settled] = (await publicClient.readContract({
+  const [upAmount, downAmount, , settled] = (await publicClientFor().readContract({
     address: market,
     abi: POOL_MARKET_ABI,
     functionName: "pools",
@@ -192,7 +193,7 @@ export async function settleMarket(
     payload: { marketId, roundIndex, winner },
   });
 
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  const receipt = await publicClientFor().waitForTransactionReceipt({ hash });
   if (receipt.status !== "success") {
     markTxFailed(db, txId, "settle 回滚");
     throw new HttpError(502, `结算交易回滚：marketId ${marketId} round ${roundIndex}`);
@@ -287,11 +288,11 @@ export async function claimForUser(
   const market = requireMarket(cfg);
 
   const user = db
-    .prepare("SELECT id, address, enc_pkey FROM users WHERE LOWER(address) = LOWER(?)")
-    .get(address) as { id: number; address: Address; enc_pkey: string } | undefined;
+    .prepare("SELECT id, address, enc_pkey FROM users WHERE env = ? AND LOWER(address) = LOWER(?)")
+    .get(currentEnv(), address) as { id: number; address: Address; enc_pkey: string } | undefined;
   if (!user) throw new HttpError(404, `用户不存在：${address}`);
 
-  const [, , , settled] = (await publicClient.readContract({
+  const [, , , settled] = (await publicClientFor().readContract({
     address: market,
     abi: POOL_MARKET_ABI,
     functionName: "pools",
@@ -299,7 +300,7 @@ export async function claimForUser(
   })) as readonly [bigint, bigint, number, boolean];
   if (!settled) throw new HttpError(409, `第 ${roundIndex} 轮还没结算`);
 
-  const alreadyClaimed = (await publicClient.readContract({
+  const alreadyClaimed = (await publicClientFor().readContract({
     address: market,
     abi: POOL_MARKET_ABI,
     functionName: "claimed",
@@ -307,7 +308,7 @@ export async function claimForUser(
   })) as boolean;
   if (alreadyClaimed) throw new HttpError(409, `第 ${roundIndex} 轮已经领过了（每轮只能领一次）`);
 
-  const amountWei = (await publicClient.readContract({
+  const amountWei = (await publicClientFor().readContract({
     address: market,
     abi: POOL_MARKET_ABI,
     functionName: "previewClaim",
@@ -338,7 +339,7 @@ export async function claimForUser(
       payload: { marketId, roundIndex, amountWei: amountWei.toString() },
     });
 
-    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    const receipt = await publicClientFor().waitForTransactionReceipt({ hash });
     if (receipt.status !== "success") {
       markTxFailed(db, txId, "claim 回滚");
       throw new HttpError(502, "领取交易回滚");
@@ -352,7 +353,12 @@ export async function claimForUser(
 }
 
 /** 轮询式自动结算：只处理「已经结束、有下注、还没结算」的轮次，拿不到价格就跳过。 */
-export function startAutoSettler(db: Db, cfg: ChainConfig, intervalMs = 3_000): void {
+export function startAutoSettler(
+  db: Db,
+  cfg: ChainConfig,
+  intervalMs = 3_000,
+  env = currentEnv(),
+): void {
   let busy = false;
   /** 每个 (标的, 轮次) 最多 30s 试一次行情，避免每 3s 打一次接口。 */
   const tick = async () => {
@@ -419,8 +425,8 @@ export function startAutoSettler(db: Db, cfg: ChainConfig, intervalMs = 3_000): 
     }
   };
 
-  setInterval(() => void tick(), intervalMs);
-  console.log(`[settle] 自动结算已启动（每 ${intervalMs / 1000}s 检查一次，RPC ${RPC_URL}）`);
+  setInterval(() => void runWithEnv(env, tick), intervalMs);
+  console.log(`[settle] 自动结算已启动（${env}，每 ${intervalMs / 1000}s 检查一次，RPC ${cfg.rpcUrl}）`);
 }
 
 export async function marketsWithUnsettledBets(
@@ -431,7 +437,7 @@ export async function marketsWithUnsettledBets(
   const market = requireMarket(cfg);
   const result: number[] = [];
   for (const row of listMarkets(db)) {
-    const [upAmount, downAmount, , settled] = (await publicClient.readContract({
+    const [upAmount, downAmount, , settled] = (await publicClientFor().readContract({
       address: market,
       abi: POOL_MARKET_ABI,
       functionName: "pools",
@@ -449,13 +455,13 @@ export async function backfillBetResults(db: Db, cfg: ChainConfig): Promise<numb
   const market = requireMarket(cfg);
   const groups = db
     .prepare(
-      "SELECT DISTINCT market_id, round_id, symbol FROM bets WHERE winner_side IS NULL",
+      "SELECT DISTINCT market_id, round_id, symbol FROM bets WHERE env = ? AND winner_side IS NULL",
     )
-    .all() as Array<{ market_id: number; round_id: number; symbol: string }>;
+    .all(currentEnv()) as Array<{ market_id: number; round_id: number; symbol: string }>;
 
   let filled = 0;
   for (const group of groups) {
-    const [upAmount, downAmount, winner, settled] = (await publicClient.readContract({
+    const [upAmount, downAmount, winner, settled] = (await publicClientFor().readContract({
       address: market,
       abi: POOL_MARKET_ABI,
       functionName: "pools",
@@ -488,10 +494,10 @@ export async function claimRoundForUsers(
   const rows = db
     .prepare(
       "SELECT DISTINCT address FROM bets " +
-        "WHERE market_id = ? AND round_id = ? AND claimed_at IS NULL " +
+        "WHERE env = ? AND market_id = ? AND round_id = ? AND claimed_at IS NULL " +
         "AND payout_wei IS NOT NULL AND payout_wei != '0'",
     )
-    .all(marketId, roundIndex) as Array<{ address: string }>;
+    .all(currentEnv(), marketId, roundIndex) as Array<{ address: string }>;
 
   let claimed = 0;
   let failed = 0;

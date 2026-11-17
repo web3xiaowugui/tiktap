@@ -3,6 +3,7 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
+import { normalizeEnv, runWithEnv } from "./runtime.ts";
 
 export interface HandlerContext {
   req: IncomingMessage;
@@ -101,6 +102,7 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 export function startServer(router: Router, port: number, host = "127.0.0.1"): void {
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://${host}:${port}`);
+    const env = normalizeEnv(url.searchParams.get("env"));
     const found = router.match(req.method ?? "GET", url.pathname);
 
     if (!found) {
@@ -109,12 +111,14 @@ export function startServer(router: Router, port: number, host = "127.0.0.1"): v
     }
 
     try {
-      const result = await found.handler({
-        req,
-        res,
-        params: found.params,
-        query: url.searchParams,
-      });
+      const result = await runWithEnv(env, () =>
+        found.handler({
+          req,
+          res,
+          params: found.params,
+          query: url.searchParams,
+        }),
+      );
       if (result !== undefined) sendJson(res, 200, result);
     } catch (error) {
       const status = error instanceof HttpError ? error.status : 500;

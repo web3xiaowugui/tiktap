@@ -1,4 +1,5 @@
 import type { Db } from "./db.ts";
+import { currentEnv } from "./runtime.ts";
 import { BET_TOKENS } from "./data/mockData.ts";
 import { displayName, formatAmount, gradientFor, relativeTime, shortAddress } from "./activity.ts";
 import type {
@@ -48,9 +49,9 @@ export function findProfileUser(db: Db, handle: string): ProfileUser | undefined
   return db
     .prepare(
       "SELECT id, address, x_name, x_handle, created_at FROM users " +
-        "WHERE LOWER(address) = LOWER(?) OR LOWER(x_handle) = LOWER(?) LIMIT 1",
+        "WHERE env = ? AND (LOWER(address) = LOWER(?) OR LOWER(x_handle) = LOWER(?)) LIMIT 1",
     )
-    .get(handle, handle) as ProfileUser | undefined;
+    .get(currentEnv(), handle, handle) as ProfileUser | undefined;
 }
 
 interface BetLite {
@@ -92,9 +93,9 @@ function loadGroups(db: Db, address: string): RoundGroup[] {
     .prepare(
       "SELECT id, market_id, symbol, bet_token, round_id, side, amount_wei, winner_side, " +
         "payout_wei, claimed_at, claim_tx_hash, tx_hash, created_at, settled_at " +
-        "FROM bets WHERE address = ? AND status = 'confirmed' ORDER BY id",
+        "FROM bets WHERE env = ? AND address = ? AND status = 'confirmed' ORDER BY id",
     )
-    .all(address.toLowerCase()) as unknown as BetLite[];
+    .all(currentEnv(), address.toLowerCase()) as unknown as BetLite[];
 
   const groups = new Map<string, RoundGroup>();
   for (const row of rows) {
@@ -395,9 +396,9 @@ export function readProfileEvents(db: Db, address: string, limit = 100): Profile
   const rows = db
     .prepare(
       "SELECT id, market_id, symbol, bet_token, round_id, side, amount_wei, tx_hash, created_at " +
-        "FROM bets WHERE address = ? AND status = 'confirmed' ORDER BY id DESC",
+        "FROM bets WHERE env = ? AND address = ? AND status = 'confirmed' ORDER BY id DESC",
     )
-    .all(address.toLowerCase()) as Array<{
+    .all(currentEnv(), address.toLowerCase()) as Array<{
     id: number;
     symbol: string;
     bet_token: string;
@@ -426,9 +427,9 @@ export function readProfileEvents(db: Db, address: string, limit = 100): Profile
   const opinions = db
     .prepare(
       "SELECT id, symbol, bet_token, round_id, body, side, created_at FROM opinions " +
-        "WHERE address = ? ORDER BY id DESC",
+        "WHERE env = ? AND address = ? ORDER BY id DESC",
     )
-    .all(address.toLowerCase()) as unknown as OpinionLite[];
+    .all(currentEnv(), address.toLowerCase()) as unknown as OpinionLite[];
 
   for (const row of opinions) {
     events.push({

@@ -1,9 +1,10 @@
-import { publicClient } from "./chain.ts";
+import { publicClientFor } from "./chain.ts";
 import { POOL_MARKET_ABI } from "./contracts.ts";
 import { HttpError } from "./http.ts";
 import { requireMarket, type ChainConfig } from "./tx.ts";
 import { listMarkets } from "./markets.ts";
 import type { Db } from "./db.ts";
+import { currentEnv } from "./runtime.ts";
 
 /**
  * 每轮的「锁定价格」和「开奖价格」落库。
@@ -58,10 +59,10 @@ function toRow(row: Row | undefined): RoundPriceRow | null {
 
 const SELECT =
   "SELECT symbol, round_id, start_block, lock_time, lock_price, settle_time, settle_price, updated_at " +
-  "FROM round_prices WHERE symbol = ? AND round_id = ?";
+  "FROM round_prices WHERE env = ? AND symbol = ? AND round_id = ?";
 
 export function getRoundPrice(db: Db, symbol: string, roundId: number): RoundPriceRow | null {
-  const row = db.prepare(SELECT).get(symbol.toUpperCase(), roundId) as Row | undefined;
+  const row = db.prepare(SELECT).get(currentEnv(), symbol.toUpperCase(), roundId) as Row | undefined;
   return toRow(row);
 }
 
@@ -78,9 +79,9 @@ function upsert(
   },
 ): void {
   db.prepare(
-    "INSERT INTO round_prices (symbol, round_id, start_block, lock_time, lock_price, settle_time, settle_price, source, updated_at) " +
-      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) " +
-      "ON CONFLICT(symbol, round_id) DO UPDATE SET " +
+    "INSERT INTO round_prices (env, symbol, round_id, start_block, lock_time, lock_price, settle_time, settle_price, source, updated_at) " +
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+      "ON CONFLICT(env, symbol, round_id) DO UPDATE SET " +
       "start_block = COALESCE(excluded.start_block, round_prices.start_block), " +
       "lock_time = COALESCE(excluded.lock_time, round_prices.lock_time), " +
       "lock_price = COALESCE(excluded.lock_price, round_prices.lock_price), " +
@@ -88,6 +89,7 @@ function upsert(
       "settle_price = COALESCE(excluded.settle_price, round_prices.settle_price), " +
       "updated_at = excluded.updated_at",
   ).run(
+    currentEnv(),
     symbol.toUpperCase(),
     roundId,
     patch.startBlock ?? null,
@@ -107,19 +109,19 @@ async function roundTimeline(
 ): Promise<{ startBlock: number; endTime: number; startTime: number }> {
   const market = requireMarket(cfg);
   const startBlock = Number(
-    (await publicClient.readContract({
+    (await publicClientFor().readContract({
       address: market,
       abi: POOL_MARKET_ABI,
       functionName: "roundStart",
       args: [BigInt(roundIndex)],
     })) as bigint,
   );
-  const start = await publicClient.getBlock({ blockNumber: BigInt(startBlock) });
+  const start = await publicClientFor().getBlock({ blockNumber: BigInt(startBlock) });
 
   // 轮末那块可能还没出（当前轮），先用「轮首 + 600s」估算；等真的结束了再精确重算
   let endTimestamp = Number(start.timestamp) + 600;
   try {
-    const end = await publicClient.getBlock({ blockNumber: BigInt(startBlock + 599) });
+    const end = await publicClientFor().getBlock({ blockNumber: BigInt(startBlock + 599) });
     endTimestamp = Number(end.timestamp);
   } catch {
     // 还没出块，保留估算值
@@ -179,7 +181,7 @@ export async function ensureRoundPrices(
   const closeMinute = minuteOf(timeline.endTime);
 
   // 这一轮在链上还没结束（当前轮）：开奖价先不要求
-  const blockNumber = Number(await publicClient.getBlockNumber());
+  const blockNumber = Number(await publicClientFor().getBlockNumber());
   const finished = blockNumber >= timeline.startBlock + 600;
 
   const needLock = existing?.lockPrice == null;
@@ -221,7 +223,10 @@ export async function ensureRoundPrices(
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
- * 回填所有「已经结束」轮次的锁定 / 开奖价格，不看这一轮有没有人下注。
+ * 回填库里已经出现过、但价格没齐的已结束轮次，不看这一轮有没有人下注。
+ *
+ * 只扫描 `round_prices` 里实际记录过的轮次，不枚举链上全部历史：
+ * X Layer 测试网区块高度已经几千万，从 round 0 全量回填会打出几十万次请求。
  *
  * 行情接口有频率限制，按 delayMs 节流串行跑；已经写齐的轮次直接跳过，
  * 所以正常重启时几乎不产生行情请求。服务启动后在后台调用即可。
@@ -233,12 +238,17 @@ export async function backfillRoundPrices(
   delayMs = 120,
 ): Promise<{ attempted: number; filled: number; failed: number }> {
   const symbols = [...new Set(listMarkets(db).map((row) => row.symbol))];
+  const missing = db
+    .prepare(
+      "SELECT DISTINCT round_id FROM round_prices " +
+        "WHERE env = ? AND round_id <= ? AND settle_price IS NULL ORDER BY round_id",
+    )
+    .all(currentEnv(), currentRound - 2) as Array<{ round_id: number }>;
   let attempted = 0;
   let filled = 0;
   let failed = 0;
 
-  // currentRound 是下注中的最新轮；它和上一轮都还没结束，只回填到 currentRound - 2。
-  for (let roundIndex = 0; roundIndex <= currentRound - 2; roundIndex += 1) {
+  for (const { round_id: roundIndex } of missing) {
     for (const symbol of symbols) {
       const before = getRoundPrice(db, symbol, roundIndex);
       if (before?.lockPrice != null && before.settlePrice != null) continue;

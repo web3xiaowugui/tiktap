@@ -2,6 +2,7 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom";
 import { LogOut, Search, Settings, Trophy, User } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
+import { EnvironmentSelect } from "@/components/EnvironmentSelect";
 import { FaucetButton } from "@/components/FaucetButton";
 import { Logo } from "@/components/Logo";
 import { SearchDialog, useSearchHotkey } from "@/components/SearchDialog";
@@ -86,6 +87,7 @@ export function TopBar() {
 
       <div className="flex shrink-0 items-center gap-2.5">
         <FaucetButton />
+        <EnvironmentSelect />
 
         <span className="hidden items-center gap-2.5 lg:flex">
           {balanceTokens.map((token) => (

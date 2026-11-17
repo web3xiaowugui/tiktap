@@ -1,4 +1,5 @@
 import type { Db } from "./db.ts";
+import { currentEnv } from "./runtime.ts";
 import type { MarketRow } from "./markets.ts";
 import { SIDE_DOWN, SIDE_UP } from "./contracts.ts";
 import type { MarketActivity } from "../../../packages/shared/src/api-types.ts";
@@ -110,10 +111,10 @@ export function readMarketActivity(
       "SELECT b.address, b.side, b.amount_wei, b.bet_token, b.created_at, b.tx_hash, " +
         "u.x_name, u.x_handle " +
         "FROM bets b LEFT JOIN users u ON u.id = b.user_id " +
-        "WHERE b.market_id = ? AND b.round_id = ? " +
+        "WHERE b.env = ? AND b.market_id = ? AND b.round_id = ? " +
         "ORDER BY b.created_at DESC LIMIT 100",
     )
-    .all(marketRow.market_id, roundIndex) as unknown as BetRow[];
+    .all(currentEnv(), marketRow.market_id, roundIndex) as unknown as BetRow[];
 
   for (const bet of bets) {
     entries.push({
@@ -137,10 +138,10 @@ export function readMarketActivity(
     .prepare(
       "SELECT t.tx_hash, t.created_at, t.payload, u.address, u.x_name, u.x_handle " +
         "FROM txs t LEFT JOIN users u ON u.id = t.user_id " +
-        "WHERE t.kind = 'settle' AND t.status = 'confirmed' " +
+        "WHERE t.env = ? AND t.kind = 'settle' AND t.status = 'confirmed' " +
         "ORDER BY t.created_at DESC LIMIT 200",
     )
-    .all() as unknown as TxRow[];
+    .all(currentEnv()) as unknown as TxRow[];
 
   for (const tx of settleTx) {
     const payload = parsePayload(tx.payload);
@@ -169,10 +170,10 @@ export function readMarketActivity(
     .prepare(
       "SELECT t.tx_hash, t.created_at, t.payload, u.address, u.x_name, u.x_handle " +
         "FROM txs t LEFT JOIN users u ON u.id = t.user_id " +
-        "WHERE t.kind = 'claim' AND t.status = 'confirmed' " +
+        "WHERE t.env = ? AND t.kind = 'claim' AND t.status = 'confirmed' " +
         "ORDER BY t.created_at DESC LIMIT 200",
     )
-    .all() as unknown as TxRow[];
+    .all(currentEnv()) as unknown as TxRow[];
 
   for (const tx of claimTx) {
     const payload = parsePayload(tx.payload);

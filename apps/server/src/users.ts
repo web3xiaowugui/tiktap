@@ -1,4 +1,4 @@
-import { publicClient } from "./chain.ts";
+import { publicClientFor } from "./chain.ts";
 import { allowUserOnChain } from "./market-sync.ts";
 import { HttpError } from "./http.ts";
 import {
@@ -12,6 +12,7 @@ import {
 } from "./tx.ts";
 import { createCustodialWallet } from "./wallet.ts";
 import type { Db } from "./db.ts";
+import { currentEnv } from "./runtime.ts";
 
 export interface CreatedUser {
   id: number;
@@ -42,15 +43,15 @@ export async function createUser(
   const { xUserId, xHandle, xName } = profile;
   const known = xUserId
     ? (db
-        .prepare("SELECT id, address FROM users WHERE x_user_id = ?")
-        .get(xUserId) as { id: number; address: string } | undefined)
+        .prepare("SELECT id, address FROM users WHERE env = ? AND x_user_id = ?")
+        .get(currentEnv(), xUserId) as { id: number; address: string } | undefined)
     : undefined;
   if (known) {
     // 复用账号时顺手刷新 handle/昵称（X 上改名、改 handle 都能跟上）
     if (xHandle || xName) {
       db.prepare(
-        "UPDATE users SET x_handle = COALESCE(?, x_handle), x_name = COALESCE(?, x_name) WHERE id = ?",
-      ).run(xHandle ?? null, xName ?? null, known.id);
+        "UPDATE users SET x_handle = COALESCE(?, x_handle), x_name = COALESCE(?, x_name) WHERE env = ? AND id = ?",
+      ).run(xHandle ?? null, xName ?? null, currentEnv(), known.id);
     }
     return {
       id: known.id,
@@ -65,15 +66,16 @@ export async function createUser(
   const email = `${wallet.address.toLowerCase()}@tiktap.local`;
 
   const existing = db
-    .prepare("SELECT id, address FROM users WHERE address = ?")
-    .get(wallet.address) as { id: number; address: string } | undefined;
+    .prepare("SELECT id, address FROM users WHERE env = ? AND address = ?")
+    .get(currentEnv(), wallet.address) as { id: number; address: string } | undefined;
   if (existing) throw new HttpError(409, `该地址已存在：${existing.address}`);
 
   const result = db
     .prepare(
-      "INSERT INTO users (email, address, enc_pkey, creator, created_at, x_user_id, x_handle, x_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO users (env, email, address, enc_pkey, creator, created_at, x_user_id, x_handle, x_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .run(
+      currentEnv(),
       email,
       wallet.address,
       wallet.encPkey,
@@ -99,7 +101,7 @@ export async function createUser(
         txHash: hash,
         payload: { address: wallet.address },
       });
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await publicClientFor().waitForTransactionReceipt({ hash });
       if (receipt.status === "success") markTxConfirmed(db, txId);
       else markTxFailed(db, txId, "白名单交易回滚");
       allowTxHash = hash;
@@ -135,7 +137,7 @@ async function topUpGas(
       value: wei,
     });
   });
-  await publicClient.waitForTransactionReceipt({ hash });
+  await publicClientFor().waitForTransactionReceipt({ hash });
   return wei.toString();
 }
 
@@ -150,7 +152,7 @@ export async function ensureUserGas(
   address: `0x${string}`,
 ): Promise<string | null> {
   if (cfg.gasTopUpWei <= 0n || !cfg.operatorPkey) return null;
-  const balance = await publicClient.getBalance({ address });
+  const balance = await publicClientFor().getBalance({ address });
   if (balance >= cfg.gasTopUpWei / 4n) return null;
   return topUpGas(cfg, address, cfg.gasTopUpWei);
 }

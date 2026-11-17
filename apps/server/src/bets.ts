@@ -1,4 +1,5 @@
 import type { Db } from "./db.ts";
+import { currentEnv } from "./runtime.ts";
 
 /**
  * 用户下注记录（结构化版本，链上仍是最终真相）。
@@ -24,10 +25,11 @@ export interface BetRowInput {
 
 export function recordBet(db: Db, input: BetRowInput): void {
   db.prepare(
-    "INSERT INTO bets (user_id, address, market_id, symbol, bet_token, round_id, side, amount_wei, fee_wei, tx_hash, status, created_at) " +
-      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+    "INSERT INTO bets (env, user_id, address, market_id, symbol, bet_token, round_id, side, amount_wei, fee_wei, tx_hash, status, created_at) " +
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
       "ON CONFLICT(tx_hash) DO UPDATE SET status = excluded.status",
   ).run(
+    currentEnv(),
     input.userId,
     input.address.toLowerCase(),
     input.marketId,
@@ -69,9 +71,9 @@ export function applySettlement(
 ): void {
   const rows = db
     .prepare(
-      "SELECT id, side, amount_wei, fee_wei FROM bets WHERE market_id = ? AND round_id = ?",
+      "SELECT id, side, amount_wei, fee_wei FROM bets WHERE env = ? AND market_id = ? AND round_id = ?",
     )
-    .all(marketId, roundId) as Array<{
+    .all(currentEnv(), marketId, roundId) as Array<{
     id: number;
     side: number;
     amount_wei: string;
@@ -86,7 +88,7 @@ export function applySettlement(
   const claimFeeBps = BigInt(input.claimFeeBps ?? 0);
 
   const update = db.prepare(
-    "UPDATE bets SET winner_side = ?, lock_price = ?, settle_price = ?, settled_at = ?, payout_wei = ? WHERE id = ?",
+    "UPDATE bets SET winner_side = ?, lock_price = ?, settle_price = ?, settled_at = ?, payout_wei = ? WHERE id = ? AND env = ?",
   );
   const now = Date.now();
 
@@ -103,6 +105,7 @@ export function applySettlement(
       now,
       payout.toString(),
       row.id,
+      currentEnv(),
     );
   }
 }
@@ -117,8 +120,8 @@ export function applyClaim(
 ): void {
   db.prepare(
     "UPDATE bets SET claimed_at = ?, claim_tx_hash = ? " +
-      "WHERE market_id = ? AND round_id = ? AND address = ? AND claimed_at IS NULL",
-  ).run(Date.now(), txHash, marketId, roundId, address.toLowerCase());
+      "WHERE env = ? AND market_id = ? AND round_id = ? AND address = ? AND claimed_at IS NULL",
+  ).run(Date.now(), txHash, currentEnv(), marketId, roundId, address.toLowerCase());
 }
 
 export interface BetRow {
@@ -150,10 +153,10 @@ export function listBets(
   filter: { userId?: number; address?: string; limit?: number },
 ): BetRow[] {
   const limit = Math.min(Math.max(filter.limit ?? 100, 1), 500);
-  const where: string[] = [];
+  const where: string[] = ["env = ?"];
   if (filter.userId !== undefined) where.push("user_id = ?");
   if (filter.address) where.push("address = ?");
-  const clause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
+  const clause = `WHERE ${where.join(" AND ")}`;
 
   return db
     .prepare(
@@ -163,6 +166,7 @@ export function listBets(
        FROM bets ${clause} ORDER BY id DESC LIMIT ${limit}`,
     )
     .all(
+      currentEnv(),
       ...(filter.userId !== undefined ? [filter.userId] : []),
       ...(filter.address ? [filter.address.toLowerCase()] : []),
     ) as unknown as BetRow[];
@@ -175,10 +179,10 @@ export function backfillBetsFromTxs(db: Db): number {
     .prepare(
       "SELECT t.user_id, t.tx_hash, t.status, t.payload, u.address " +
         "FROM txs t LEFT JOIN users u ON u.id = t.user_id " +
-        "WHERE t.kind = 'bet' AND u.address IS NOT NULL " +
-        "AND NOT EXISTS (SELECT 1 FROM bets b WHERE b.tx_hash = t.tx_hash)",
+        "WHERE t.env = ? AND t.kind = 'bet' AND u.address IS NOT NULL " +
+        "AND NOT EXISTS (SELECT 1 FROM bets b WHERE b.tx_hash = t.tx_hash AND b.env = t.env)",
     )
-    .all() as Array<{
+    .all(currentEnv()) as Array<{
     user_id: number;
     tx_hash: string;
     status: string;
@@ -198,8 +202,8 @@ export function backfillBetsFromTxs(db: Db): number {
     if (parsed.marketId === undefined || parsed.roundIndex === undefined) continue;
 
     const market = db
-      .prepare("SELECT symbol, bet_token FROM markets WHERE market_id = ?")
-      .get(parsed.marketId) as
+      .prepare("SELECT symbol, bet_token FROM markets WHERE env = ? AND market_id = ?")
+      .get(currentEnv(), parsed.marketId) as
       | { symbol: string; bet_token: string }
       | undefined;
     if (!market) continue;

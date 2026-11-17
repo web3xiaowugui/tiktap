@@ -5,6 +5,8 @@ import { defineConfig } from "vite";
 
 const webSrc = fileURLToPath(new URL("./src", import.meta.url));
 const sharedSrc = fileURLToPath(new URL("../../packages/shared/src", import.meta.url));
+const apiTarget = process.env.VITE_API_TARGET ?? "http://127.0.0.1:8787";
+const port = Number(process.env.VITE_PORT ?? 5173);
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -17,11 +19,11 @@ export default defineConfig({
   },
   server: {
     host: "127.0.0.1",
-    port: 5173,
+    port,
     proxy: {
-      // 后端跑在 8787，前端只认 /api，避免跨域。
+      // 单后端 /api，环境由请求参数 env 决定。
       "/api": {
-        target: "http://127.0.0.1:8787",
+        target: apiTarget,
         changeOrigin: false,
       },
     },

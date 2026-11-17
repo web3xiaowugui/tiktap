@@ -8,6 +8,7 @@ import {
   safeReturnTo,
 } from "./x-oauth.ts";
 import type { Db } from "./db.ts";
+import { currentEnv } from "./runtime.ts";
 import { findMarket, listMarkets } from "./markets.ts";
 import { placeBet, mintForUser } from "./betting.ts";
 import { createUser } from "./users.ts";
@@ -91,8 +92,8 @@ function isQuickAmounts(value: unknown): value is number[] {
 
 function readQuickAmounts(db: Db, symbol: string): number[] {
   const row = db
-    .prepare("SELECT amounts FROM quick_amounts WHERE symbol = ?")
-    .get(symbol) as { amounts: string } | undefined;
+    .prepare("SELECT amounts FROM quick_amounts WHERE env = ? AND symbol = ?")
+    .get(currentEnv(), symbol) as { amounts: string } | undefined;
 
   if (row) {
     try {
@@ -132,9 +133,9 @@ export function registerRoutes(router: Router, db: Db): void {
   router.get("/api/users/:address", async ({ params }) => {
     const row = db
       .prepare(
-        "SELECT id, address, x_user_id, x_handle, x_name, created_at FROM users WHERE LOWER(address) = LOWER(?)",
+        "SELECT id, address, x_user_id, x_handle, x_name, created_at FROM users WHERE env = ? AND LOWER(address) = LOWER(?)",
       )
-      .get(params.address) as
+      .get(currentEnv(), params.address) as
       | {
           id: number;
           address: string;
@@ -358,9 +359,9 @@ export function registerRoutes(router: Router, db: Db): void {
     }
 
     db.prepare(
-      "INSERT INTO quick_amounts (symbol, amounts, updated_at) VALUES (?, ?, ?) " +
-        "ON CONFLICT(symbol) DO UPDATE SET amounts = excluded.amounts, updated_at = excluded.updated_at",
-    ).run(params.symbol, JSON.stringify(body.amounts), Date.now());
+      "INSERT INTO quick_amounts (env, symbol, amounts, updated_at) VALUES (?, ?, ?, ?) " +
+        "ON CONFLICT(env, symbol) DO UPDATE SET amounts = excluded.amounts, updated_at = excluded.updated_at",
+    ).run(currentEnv(), params.symbol, JSON.stringify(body.amounts), Date.now());
 
     return body.amounts;
   });

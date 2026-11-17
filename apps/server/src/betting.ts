@@ -1,5 +1,5 @@
 import { parseUnits, type Address } from "viem";
-import { publicClient } from "./chain.ts";
+import { publicClientFor } from "./chain.ts";
 import { ERC20_ABI, POOL_MARKET_ABI, sideFromLabel } from "./contracts.ts";
 import { HttpError } from "./http.ts";
 import { describe, ensureUserGas } from "./users.ts";
@@ -15,6 +15,7 @@ import { findMarket } from "./markets.ts";
 import { decryptPrivateKey } from "./wallet.ts";
 import { recordBet } from "./bets.ts";
 import type { Db } from "./db.ts";
+import { currentEnv } from "./runtime.ts";
 
 export interface BetInput {
   address: string;
@@ -40,7 +41,7 @@ const MAX_UINT256 = 2n ** 256n - 1n;
 async function readBetFeeBps(market: Address, marketId: number): Promise<number> {
   try {
     return Number(
-      await publicClient.readContract({
+      await publicClientFor().readContract({
         address: market,
         abi: POOL_MARKET_ABI,
         functionName: "betFeeBps",
@@ -61,8 +62,8 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
   if (!cfg.market) throw new HttpError(503, "未配置 POOL_MARKET_ADDRESS");
 
   const user = db
-    .prepare("SELECT id, address, enc_pkey FROM users WHERE LOWER(address) = LOWER(?)")
-    .get(input.address) as { id: number; address: Address; enc_pkey: string } | undefined;
+    .prepare("SELECT id, address, enc_pkey FROM users WHERE env = ? AND LOWER(address) = LOWER(?)")
+    .get(currentEnv(), input.address) as { id: number; address: Address; enc_pkey: string } | undefined;
   if (!user) throw new HttpError(404, `用户不存在：${input.address}，先调用 POST /api/users 建号`);
 
   const marketRow = findMarket(db, input.market.toUpperCase(), input.betToken.toUpperCase());
@@ -85,7 +86,7 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
   if (amountWei <= 0n) throw new HttpError(400, "金额必须大于 0");
 
   const marketId = marketRow.market_id;
-  const [token, enabled] = (await publicClient.readContract({
+  const [token, enabled] = (await publicClientFor().readContract({
     address: cfg.market,
     abi: POOL_MARKET_ABI,
     functionName: "markets",
@@ -97,7 +98,7 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
   }
   if (!enabled) throw new HttpError(409, `市场在链上已停用：${marketId}`);
 
-  const open = (await publicClient.readContract({
+  const open = (await publicClientFor().readContract({
     address: cfg.market,
     abi: POOL_MARKET_ABI,
     functionName: "isBettingOpen",
@@ -105,14 +106,14 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
   if (!open) throw new HttpError(409, "本轮已封盘，请等下一轮");
 
   const roundIndex = Number(
-    (await publicClient.readContract({
+    (await publicClientFor().readContract({
       address: cfg.market,
       abi: POOL_MARKET_ABI,
       functionName: "currentRound",
     })) as bigint,
   );
 
-  const balance = (await publicClient.readContract({
+  const balance = (await publicClientFor().readContract({
     address: token,
     abi: ERC20_ABI,
     functionName: "balanceOf",
@@ -134,7 +135,7 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
 
     // 首次下注前补一次无限授权，之后不再重复。
     let approveTxHash: string | null = null;
-    const allowance = (await publicClient.readContract({
+    const allowance = (await publicClientFor().readContract({
       address: token,
       abi: ERC20_ABI,
       functionName: "allowance",
@@ -156,7 +157,7 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
         txHash: hash,
         payload: { token, spender: cfg.market },
       });
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await publicClientFor().waitForTransactionReceipt({ hash });
       if (receipt.status !== "success") {
         markTxFailed(db, txId, "approve 回滚");
         throw new HttpError(502, "授权交易回滚");
@@ -187,7 +188,7 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
 
     let receipt;
     try {
-      receipt = await publicClient.waitForTransactionReceipt({ hash });
+      receipt = await publicClientFor().waitForTransactionReceipt({ hash });
     } catch (error) {
       markTxFailed(db, txId, describe(error));
       throw new HttpError(502, `交易确认失败：${describe(error)}`);
@@ -236,15 +237,15 @@ export async function mintForUser(
   const cfg = readConfig();
 
   const user = db
-    .prepare("SELECT id, address, enc_pkey FROM users WHERE LOWER(address) = LOWER(?)")
-    .get(address) as { id: number; address: Address; enc_pkey: string } | undefined;
+    .prepare("SELECT id, address, enc_pkey FROM users WHERE env = ? AND LOWER(address) = LOWER(?)")
+    .get(currentEnv(), address) as { id: number; address: Address; enc_pkey: string } | undefined;
   if (!user) throw new HttpError(404, `用户不存在：${address}`);
 
   const tokenRow = db
     .prepare(
-      "SELECT token_address FROM markets WHERE bet_token = ? AND token_address IS NOT NULL LIMIT 1",
+      "SELECT token_address FROM markets WHERE env = ? AND bet_token = ? AND token_address IS NOT NULL LIMIT 1",
     )
-    .get(betToken.toUpperCase()) as { token_address: string } | undefined;
+    .get(currentEnv(), betToken.toUpperCase()) as { token_address: string } | undefined;
   const tokenAddress = tokenRow?.token_address as Address | undefined;
   if (!tokenAddress) throw new HttpError(503, `代币 ${betToken} 还没有链上地址`);
 
@@ -277,7 +278,7 @@ export async function mintForUser(
       payload: { token: tokenAddress, amountWei: amountWei.toString() },
     });
 
-    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    const receipt = await publicClientFor().waitForTransactionReceipt({ hash });
     if (receipt.status !== "success") {
       markTxFailed(db, txId, "mint 回滚");
       throw new HttpError(502, "领取交易回滚");

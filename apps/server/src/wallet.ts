@@ -1,12 +1,14 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-
-const KEY_ENV = "WALLET_ENC_KEY";
+import { readConfig } from "./config.ts";
+import { currentEnv } from "./runtime.ts";
 
 function encryptionKey(): Buffer {
-  const raw = process.env[KEY_ENV];
+  const raw = readConfig(currentEnv()).walletEncKey;
   if (!raw || raw.length !== 64) {
-    throw new Error(`${KEY_ENV} 必须是 64 位 hex（生成：openssl rand -hex 32）`);
+    throw new Error(
+      `当前环境（${currentEnv()}）的 WALLET_ENC_KEY 必须是 64 位 hex（生成：openssl rand -hex 32）`,
+    );
   }
   return Buffer.from(raw, "hex");
 }

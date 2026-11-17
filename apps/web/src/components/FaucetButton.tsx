@@ -4,6 +4,7 @@ import { faucet } from "@/api";
 import { useAuth } from "@/context/AuthContext";
 import { useBetToken } from "@/context/BetTokenContext";
 import { useToast } from "@/context/ToastContext";
+import { ENVIRONMENT_LABELS, readEnvironment } from "@/lib/environment";
 
 const CLAIM_AMOUNT = 100;
 
@@ -22,6 +23,7 @@ export function FaucetButton() {
 
   const symbol = selected?.symbol ?? "TEST";
   const balance = selected?.balance;
+  const environment = readEnvironment();
 
   useEffect(() => {
     if (!open) return;
@@ -85,8 +87,11 @@ export function FaucetButton() {
             </button>
 
             <h2 className="text-[16px] font-semibold text-white">领取测试币</h2>
-            <p className="mt-1 text-[11px] text-muted">
-              演示环境，随时可领，用来下注体验。
+            <p className="mt-1 text-[11px] leading-relaxed text-muted">
+              当前环境：<span className="text-white">{ENVIRONMENT_LABELS[environment]}</span>。
+              {environment === "testnet"
+                ? "领取记录写入同一个库的 testnet 环境。"
+                : "领取记录写入同一个库的 dev 环境。"}
             </p>
 
             <div className="mt-5 rounded-xl border border-line bg-[#0a0a0c] px-4 py-5 text-center">

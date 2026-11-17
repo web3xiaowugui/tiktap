@@ -1,4 +1,5 @@
 import type { Db } from "./db.ts";
+import { currentEnv } from "./runtime.ts";
 import { BET_TOKENS, TOKENS } from "./data/mockData.ts";
 
 export interface MarketRow {
@@ -19,20 +20,22 @@ export interface MarketRow {
  */
 export function seedMarkets(db: Db): void {
   const existing = new Set(
-    (db.prepare("SELECT symbol, bet_token FROM markets").all() as Array<{
+    (db.prepare("SELECT symbol, bet_token FROM markets WHERE env = ?").all(currentEnv()) as Array<{
       symbol: string;
       bet_token: string;
     }>).map((row) => `${row.symbol}:${row.bet_token}`),
   );
 
-  const maxRow = db.prepare("SELECT MAX(market_id) AS max FROM markets").get() as {
+  const maxRow = db
+    .prepare("SELECT MAX(market_id) AS max FROM markets WHERE env = ?")
+    .get(currentEnv()) as {
     max: number | null;
   };
   let nextId = Number(maxRow.max ?? 0) + 1;
 
   const insert = db.prepare(
-    "INSERT INTO markets (market_id, symbol, bet_token, enabled, sort_order) " +
-      "VALUES (?, ?, ?, 1, ?)",
+    "INSERT INTO markets (env, market_id, symbol, bet_token, enabled, sort_order) " +
+      "VALUES (?, ?, ?, ?, 1, ?)",
   );
 
   let order = 0;
@@ -41,7 +44,7 @@ export function seedMarkets(db: Db): void {
       order += 1;
       const pair = `${token.symbol}:${betToken.symbol}`;
       if (existing.has(pair)) continue;
-      insert.run(nextId, token.symbol, betToken.symbol, order);
+      insert.run(currentEnv(), nextId, token.symbol, betToken.symbol, order);
       nextId += 1;
     }
   }
@@ -51,17 +54,17 @@ export function listMarkets(db: Db): MarketRow[] {
   return db
     .prepare(
       "SELECT market_id, symbol, bet_token, token_address, enabled, sort_order " +
-        "FROM markets ORDER BY sort_order, market_id",
+        "FROM markets WHERE env = ? ORDER BY sort_order, market_id",
     )
-    .all() as unknown as MarketRow[];
+    .all(currentEnv()) as unknown as MarketRow[];
 }
 
 export function findMarket(db: Db, symbol: string, betToken: string): MarketRow | null {
   const row = db
     .prepare(
       "SELECT market_id, symbol, bet_token, token_address, enabled, sort_order " +
-        "FROM markets WHERE symbol = ? AND bet_token = ?",
+        "FROM markets WHERE env = ? AND symbol = ? AND bet_token = ?",
     )
-    .get(symbol, betToken) as MarketRow | undefined;
+    .get(currentEnv(), symbol, betToken) as MarketRow | undefined;
   return row ?? null;
 }

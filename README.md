@@ -32,9 +32,9 @@ curl http://127.0.0.1:8787/api/health
 ```
 
 - 运行时：Node 26 直接用类型剥离跑 `.ts`，**没有编译步骤**
-- 数据库：`node:sqlite`，单文件 `data/tiktap.db`，schema 在 `apps/server/schema.sql`（启动时幂等应用）
+- 数据库：`node:sqlite`，单文件 `data/tiktap-auto.db`，schema 在 `apps/server/schema.sql`（启动时幂等应用）；所有表都有 `env` 字段，dev / testnet 共用同一个后端和同一个库，按请求参数 `env` 隔离
 - 链交互：`viem`（唯一运行时依赖）
-- 表结构：`users`（地址 + 加密私钥）、`txs`（txHash 唯一键、pending/confirmed/failed）、`markets`（标的×下注代币 → marketId）、`pools`、`rounds`、`quick_amounts`
+- 表结构：`users`（地址 + 加密私钥）、`txs`（txHash 唯一键、pending/confirmed/failed）、`markets`（标的×下注代币 → marketId）、`bets`（逐笔下注/结算/领奖）、`round_prices`（每轮锁定价/开奖价）、`pools`、`rounds`、`quick_amounts`、`opinions`
 
 #### 接口一览
 
