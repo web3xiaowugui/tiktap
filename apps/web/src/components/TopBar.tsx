@@ -102,13 +102,15 @@ export function TopBar() {
             <span
               key={token.symbol}
               className="flex items-center gap-1"
-              title={`${token.name} 余额`}
+              title={token.symbol === "OKB" ? "WOKB 下注余额" : `${token.name} 余额`}
             >
               <TokenIcon icon={token.icon} size={13} />
               <span className="num text-[10.5px] text-white">
                 {fmtTokenAmount(token.balance)}
               </span>
-              <span className="text-[9px] text-muted2">{token.symbol}</span>
+              <span className="text-[9px] text-muted2">
+                {token.symbol === "OKB" ? "WOKB" : token.symbol}
+              </span>
             </span>
           ))}
         </span>

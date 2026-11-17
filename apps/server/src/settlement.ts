@@ -1,6 +1,6 @@
 import { type Address } from "viem";
 import { publicClientFor } from "./chain.ts";
-import { POOL_MARKET_ABI, SIDE_DOWN, SIDE_UP, SIDE_VOID, sideFromLabel } from "./contracts.ts";
+import { POOL_MARKET_ABI, SIDE_DOWN, SIDE_UP, SIDE_VOID, WOKB_ABI, sideFromLabel } from "./contracts.ts";
 import { HttpError } from "./http.ts";
 import { listMarkets } from "./markets.ts";
 import {
@@ -347,6 +347,36 @@ export async function claimForUser(
     markTxConfirmed(db, txId);
 
     applyClaim(db, marketId, roundIndex, user.address, hash);
+
+    // OKB 市场赔的是 WOKB，领完立刻赎回成原生 OKB。
+    if (row.bet_token.toUpperCase() === "OKB" && row.token_address) {
+      try {
+        const unwrapHash = await wallet.writeContract({
+          address: row.token_address as Address,
+          abi: WOKB_ABI,
+          functionName: "withdraw",
+          args: [amountWei],
+          chain: wallet.chain,
+          account: wallet.account!,
+        });
+        const unwrapTxId = recordPendingTx(db, {
+          userId: user.id,
+          kind: "unwrap",
+          txHash: unwrapHash,
+          payload: { token: row.token_address, amountWei: amountWei.toString() },
+        });
+        const unwrapReceipt = await publicClientFor().waitForTransactionReceipt({
+          hash: unwrapHash,
+        });
+        if (unwrapReceipt.status === "success") {
+          markTxConfirmed(db, unwrapTxId);
+        } else {
+          markTxFailed(db, unwrapTxId, "unwrap 回滚");
+        }
+      } catch (error) {
+        console.warn("[claim] WOKB unwrap 失败（奖励仍在用户 WOKB 余额里）：", describe(error));
+      }
+    }
 
     return { txHash: hash, marketId, roundIndex, amountWei: amountWei.toString() };
   });

@@ -1,6 +1,6 @@
 import { parseUnits, type Address } from "viem";
 import { publicClientFor } from "./chain.ts";
-import { ERC20_ABI, POOL_MARKET_ABI, sideFromLabel } from "./contracts.ts";
+import { ERC20_ABI, POOL_MARKET_ABI, WOKB_ABI, sideFromLabel } from "./contracts.ts";
 import { HttpError } from "./http.ts";
 import { describe, ensureUserGas } from "./users.ts";
 import {
@@ -119,7 +119,12 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
     functionName: "balanceOf",
     args: [user.address],
   })) as bigint;
-  if (balance < amountWei) {
+
+  // OKB 市场用 WOKB 作为 ERC20 载体：余额不够的部分由用户原生 OKB 现场 wrap。
+  const isOkb = marketRow.bet_token.toUpperCase() === "OKB";
+  const wrapWei = isOkb && balance < amountWei ? amountWei - balance : 0n;
+
+  if (!isOkb && balance < amountWei) {
     throw new HttpError(
       400,
       `余额不足：需要 ${amountWei}，当前 ${balance}（可先调用 POST /api/faucet 领取）`,
@@ -132,6 +137,36 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
 
   return withAddressLock(user.address, async () => {
     const wallet = walletFor(pkey);
+
+    if (isOkb && wrapWei > 0n) {
+      const nativeBalance = await publicClientFor().getBalance({ address: user.address });
+      if (nativeBalance < wrapWei) {
+        throw new HttpError(
+          400,
+          `原生 OKB 不足：需要 wrap ${wrapWei}，当前 ${nativeBalance}`,
+        );
+      }
+      const hash = await wallet.writeContract({
+        address: token,
+        abi: WOKB_ABI,
+        functionName: "deposit",
+        value: wrapWei,
+        chain: wallet.chain,
+        account: wallet.account!,
+      });
+      const txId = recordPendingTx(db, {
+        userId: user.id,
+        kind: "wrap",
+        txHash: hash,
+        payload: { token, amountWei: wrapWei.toString() },
+      });
+      const receipt = await publicClientFor().waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") {
+        markTxFailed(db, txId, "wrap 回滚");
+        throw new HttpError(502, "WOKB wrap 回滚");
+      }
+      markTxConfirmed(db, txId);
+    }
 
     // 首次下注前补一次无限授权，之后不再重复。
     let approveTxHash: string | null = null;
@@ -164,6 +199,18 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
       }
       markTxConfirmed(db, txId);
       approveTxHash = hash;
+
+      // 公共 RPC 的 receipt 返回后状态可能还会慢半拍，确认 allowance 真可见再下注。
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const fresh = (await publicClientFor().readContract({
+          address: token,
+          abi: ERC20_ABI,
+          functionName: "allowance",
+          args: [user.address, cfg.market!],
+        })) as bigint;
+        if (fresh >= amountWei) break;
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
     }
 
     // 合约按下注金额收手续费；这里按同一份费率算净仓位，结算 payout 用净额。

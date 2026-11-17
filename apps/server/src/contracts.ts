@@ -32,6 +32,11 @@ export const ERC20_ABI = parseAbi([
   "function mint(uint256 amount)",
 ]);
 
+export const WOKB_ABI = parseAbi([
+  "function deposit() payable",
+  "function withdraw(uint256 amount)",
+]);
+
 export const SIDE_UP = 0;
 export const SIDE_DOWN = 1;
 export const SIDE_VOID = 2;
