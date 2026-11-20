@@ -1,10 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="24" height="24">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#8b7bff" />
-      <stop offset="1" stop-color="#5a45e8" />
+    <linearGradient id="g" x1="6" y1="12" x2="58" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#a79bff" />
+      <stop offset="0.55" stop-color="#7c6bff" />
+      <stop offset="1" stop-color="#4f3fe0" />
     </linearGradient>
   </defs>
   <rect width="64" height="64" rx="16" fill="#0b0b0e" />
-  <path d="M22 47V17h23v8H31v6h12v7H31v9h-9Z" fill="url(#g)" />
+  <!-- TT 字标：两根横杠 + 两根竖笔 -->
+  <rect x="6" y="12" width="22" height="9" rx="2.2" fill="url(#g)" />
+  <rect x="36" y="12" width="22" height="9" rx="2.2" fill="url(#g)" />
+  <rect x="12" y="21" width="10" height="31" rx="2.2" fill="url(#g)" />
+  <rect x="42" y="21" width="10" height="31" rx="2.2" fill="url(#g)" />
 </svg>
