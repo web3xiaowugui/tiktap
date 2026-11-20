@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowUpRight, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { getLeaderboard, getTokens } from "@/api";
 import type { LeaderboardEntry, Token } from "@/api/types";
 import { Avatar } from "@/components/Avatar";
 import { TokenIcon } from "@/components/TokenIcon";
-import { fmtPct, fmtPrice } from "@/lib/format";
+import { fmtPct, fmtSignedToken } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -53,7 +53,8 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
       .filter(
         (trader) =>
           trader.name.toLowerCase().includes(normalized) ||
-          trader.handle.toLowerCase().includes(normalized),
+          trader.handle.toLowerCase().includes(normalized) ||
+          (trader.xHandle?.toLowerCase().includes(normalized) ?? false),
       )
       .slice(0, 3);
   }, [normalized, traders]);
@@ -87,7 +88,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
             onKeyDown={(event) => {
               if (event.key === "Enter" && tokenResults[0]) goToToken(tokenResults[0].symbol);
             }}
-            placeholder="搜索代币、永续合约或交易者..."
+            placeholder="搜索代币或者用户..."
             className="h-full flex-1 bg-transparent text-[13px] text-white outline-none placeholder:text-muted2"
           />
           <button
@@ -115,30 +116,11 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
               key={token.symbol}
               type="button"
               onClick={() => goToToken(token.symbol)}
-              className="group flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left transition hover:bg-panel2"
+              className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left transition hover:bg-panel2"
             >
               <TokenIcon icon={token.icon} size={24} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[12px] font-semibold text-white">{token.symbol}</span>
-                  <span className="truncate text-[10px] text-muted2">{token.name}</span>
-                </div>
-                <div className="text-[9.5px] text-muted2">
-                  {token.kind === "perp" ? "永续合约" : "现货"}
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="num text-[11.5px] text-white">${fmtPrice(token.price)}</div>
-                <div
-                  className={cn(
-                    "num text-[9.5px]",
-                    token.change24h >= 0 ? "text-up" : "text-down",
-                  )}
-                >
-                  {fmtPct(token.change24h)}
-                </div>
-              </div>
-              <ArrowUpRight className="h-3.5 w-3.5 text-muted2 opacity-0 transition group-hover:opacity-100" />
+              <span className="text-[12px] font-semibold text-white">{token.symbol}</span>
+              <span className="truncate text-[11px] text-muted2">{token.name}</span>
             </button>
           ))}
 
@@ -147,21 +129,44 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
               <div className="px-2 pb-1.5 pt-3 text-[9px] font-semibold uppercase tracking-[0.16em] text-muted2">
                 交易者
               </div>
-              {traderResults.map((trader) => (
-                <button
-                  key={trader.handle}
-                  type="button"
-                  onClick={() => goToTrader(trader.handle)}
-                  className="group flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left transition hover:bg-panel2"
-                >
-                  <Avatar name={trader.name} gradient={trader.avatar} size={24} />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[12px] font-medium text-white">{trader.name}</div>
-                    <div className="text-[10px] text-muted2">@{trader.handle}</div>
-                  </div>
-                  <span className="num text-[10px] text-up">{fmtPct(trader.pnlPct)}</span>
-                </button>
-              ))}
+              {traderResults.map((trader) => {
+                const xHandle = trader.xHandle?.trim();
+                // 昵称本身就是 @handle 时（没有 X 昵称）不重复展示。
+                const showXHandle =
+                  xHandle !== undefined &&
+                  trader.name.trim().toLowerCase() !== `@${xHandle.toLowerCase()}`;
+                return (
+                  <button
+                    key={trader.handle}
+                    type="button"
+                    onClick={() => goToTrader(trader.handle)}
+                    className="group flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left transition hover:bg-panel2"
+                  >
+                    <Avatar name={trader.name} gradient={trader.avatar} size={24} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-baseline gap-1">
+                        <span className="truncate text-[12px] font-medium text-white">
+                          {trader.name}
+                        </span>
+                        {showXHandle && (
+                          <span className="shrink-0 text-[10px] text-muted2">
+                            @{xHandle}
+                          </span>
+                        )}
+                      </div>
+                      <div className="num truncate text-[10px] text-muted2">{trader.handle}</div>
+                    </div>
+                    <span
+                      className={cn(
+                        "num shrink-0 text-[10px] font-semibold",
+                        trader.pnl >= 0 ? "text-up" : "text-down",
+                      )}
+                    >
+                      {fmtSignedToken(trader.pnl, "TEST", 2)}
+                    </span>
+                  </button>
+                );
+              })}
             </>
           )}
         </div>

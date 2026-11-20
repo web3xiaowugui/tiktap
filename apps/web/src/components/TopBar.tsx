@@ -78,7 +78,7 @@ export function TopBar() {
           className="group flex h-8 w-full max-w-[520px] items-center gap-2 rounded-md border border-line bg-panel px-3 text-left text-[11.5px] text-muted2 transition hover:border-line2 hover:bg-panel2"
         >
           <Search className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">搜索代币、永续合约或交易者...</span>
+          <span className="truncate">搜索代币或者用户...</span>
           <kbd className="ml-auto hidden shrink-0 rounded border border-line2 bg-panel2 px-1.5 py-0.5 text-[9px] text-muted2 md:block">
             ⌘ K
           </kbd>

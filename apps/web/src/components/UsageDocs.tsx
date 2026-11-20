@@ -136,12 +136,6 @@ export function UsageDocs({
               caption="① 右上角「登录」打开登录弹窗，选择 X 账号登录。"
               onZoom={setZoom}
             />
-            <Shot
-              src="03-x-oauth.png"
-              alt="X 授权页面"
-              caption="② X 授权页：确认后回到 TikTap，账号自动建立。"
-              onZoom={setZoom}
-            />
             <Tip>
               授权只用于拿到你的 X 公开资料（昵称、头像）。托管钱包的私钥加密存在服务端，
               你在页面上看不到也不需要保存助记词。
@@ -154,9 +148,9 @@ export function UsageDocs({
               同一个地址每 5 分钟可以领一次。
             </p>
             <Shot
-              src="05-faucet.png"
+              src="04-trade-panel.png"
               alt="领取测试币弹窗"
-              caption="③ 领测试币弹窗：显示本次数量、当前余额、累计已领。"
+              caption="② 领测试币弹窗：显示本次数量、当前余额、累计已领。"
               onZoom={setZoom}
             />
             <p>
@@ -173,7 +167,7 @@ export function UsageDocs({
             <Shot
               src="06-discover.png"
               alt="发现页"
-              caption="④ 发现页整体：左侧导航、中间 K 线、右侧下注面板。"
+              caption="③ 发现页整体：左侧导航、中间 K 线、右侧下注面板。"
               onZoom={setZoom}
             />
             <p>
@@ -190,7 +184,7 @@ export function UsageDocs({
             <Shot
               src="09-round-window.png"
               alt="轮次规则示意"
-              caption="⑤ 轮次规则：600 块一轮，前 300 块下注、后 300 块等待开奖；下注代币当前只开放 TEST。"
+              caption="④ 轮次规则：600 块一轮，前 300 块下注、后 300 块等待开奖；下注代币当前只开放 TEST。"
               onZoom={setZoom}
             />
             <Tip>
@@ -244,7 +238,7 @@ export function UsageDocs({
             <Shot
               src="07-leaderboard.png"
               alt="排行榜"
-              caption="⑥ 排行榜：盈利金额 + 百分比。"
+              caption="⑤ 排行榜：盈利金额 + 百分比。"
               onZoom={setZoom}
             />
           </Section>
@@ -257,7 +251,7 @@ export function UsageDocs({
             <Shot
               src="08-profile.png"
               alt="个人主页"
-              caption="⑦ 个人主页：统计、余额、持仓、轮次历史与活动。"
+              caption="⑥ 个人主页：统计、余额、持仓、轮次历史与活动。"
               onZoom={setZoom}
             />
           </Section>

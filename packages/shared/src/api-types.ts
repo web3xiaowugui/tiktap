@@ -342,6 +342,9 @@ export interface EquityPoint {
 export interface LeaderboardEntry {
   rank: number;
   name: string;
+  /** X handle（没绑 X 账号时为 null）。 */
+  xHandle?: string | null;
+  /** 个人页路由用：地址（个人页路由也支持地址）。 */
   handle: string;
   avatar: string;
   pnl: number;

@@ -54,6 +54,7 @@ export function readLeaderboard(
         x_name: item.row.x_name,
         x_handle: item.row.x_handle,
       }),
+      xHandle: item.row.x_handle?.trim() || null,
       // 用地址作为 handle：重名 X 账号不会串号，个人页路由也支持地址
       handle: item.row.address,
       avatar: gradientFor(item.row.address),
