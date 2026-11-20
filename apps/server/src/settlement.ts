@@ -15,7 +15,7 @@ import {
   type ChainConfig,
 } from "./tx.ts";
 import { decryptPrivateKey } from "./wallet.ts";
-import { describe } from "./users.ts";
+import { describe, ensureUserGas } from "./users.ts";
 import { ensureRoundPrices, getRoundPrice } from "./round-prices.ts";
 import { applyClaim, applySettlement } from "./bets.ts";
 import type { Db } from "./db.ts";
@@ -288,8 +288,8 @@ export async function claimForUser(
   const market = requireMarket(cfg);
 
   const user = db
-    .prepare("SELECT id, address, enc_pkey FROM users WHERE env = ? AND LOWER(address) = LOWER(?)")
-    .get(currentEnv(), address) as { id: number; address: Address; enc_pkey: string } | undefined;
+    .prepare("SELECT id, address, enc_pkey FROM users WHERE LOWER(address) = LOWER(?)")
+    .get(address) as { id: number; address: Address; enc_pkey: string } | undefined;
   if (!user) throw new HttpError(404, `用户不存在：${address}`);
 
   const [, , , settled] = (await publicClientFor().readContract({

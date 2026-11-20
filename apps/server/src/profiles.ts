@@ -1,5 +1,6 @@
 import type { Db } from "./db.ts";
 import { currentEnv } from "./runtime.ts";
+import { followCounts, isFollowing } from "./follows.ts";
 import { BET_TOKENS } from "./data/mockData.ts";
 import { displayName, formatAmount, gradientFor, relativeTime, shortAddress } from "./activity.ts";
 import type {
@@ -49,9 +50,9 @@ export function findProfileUser(db: Db, handle: string): ProfileUser | undefined
   return db
     .prepare(
       "SELECT id, address, x_name, x_handle, created_at FROM users " +
-        "WHERE env = ? AND (LOWER(address) = LOWER(?) OR LOWER(x_handle) = LOWER(?)) LIMIT 1",
+        "WHERE LOWER(address) = LOWER(?) OR LOWER(x_handle) = LOWER(?) LIMIT 1",
     )
-    .get(currentEnv(), handle, handle) as ProfileUser | undefined;
+    .get(handle, handle) as ProfileUser | undefined;
 }
 
 interface BetLite {
@@ -478,24 +479,28 @@ export function readProfileEquity(
 }
 
 /** 组装个人主页资料；没有链上记录的用户由调用方给 mock 资料。 */
-export function readProfile(db: Db, user: ProfileUser): Profile {
+export function readProfile(
+  db: Db,
+  user: ProfileUser,
+  viewerId: number | null = null,
+): Profile {
   const stats = readProfileStats(db, user.address);
-  const badges: Profile["badges"] = [];
-  if (stats.rounds > 0) badges.push({ label: "已入场", tone: "neutral" });
-  if (stats.wonRounds >= 10) badges.push({ label: "十胜", tone: "gold" });
-  if (stats.pnlUsd > 0) badges.push({ label: "盈利中", tone: "green" });
-
+  const follows = followCounts(db, user.id);
+  const followedByViewer =
+    viewerId !== null && viewerId !== user.id
+      ? isFollowing(db, viewerId, user.id)
+      : false;
   const joined = new Date(user.created_at).toISOString().slice(0, 10);
   return {
     handle: user.x_handle ?? shortAddress(user.address),
     name: displayName(user),
     bio: "TikTap 二元彩池玩家",
     avatar: gradientFor(user.address),
-    followers: "0",
-    following: 0,
-    mutual: 0,
+    followers: String(follows.followers),
+    following: follows.following,
+    mutual: follows.mutual,
+    isFollowing: followedByViewer,
     joined,
-    badges,
     cash: 0,
     equity: stats.pnlUsd,
     equityChange24h: 0,

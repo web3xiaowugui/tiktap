@@ -36,12 +36,20 @@ pnpm contracts:node    # anvil --block-time 1 --chain-id 195
 
 ## 两个合约
 
-### `src/TikTapToken.sol`
+### `src/TikTapTestToken.sol`（新版 TEST，线上在用）
 
 下注代币，ERC20 子集（`transfer` / `approve` / `transferFrom`，无 `permit`、无回调）。
 
-- 公开 `mint(amount)`：任何人可领，**单地址累计上限 `mintCap`**（部署时传入，默认 1000e18）
+- **总量无上限**：`mint` 只受 minter 权限约束
+- **只有 minter（后端 operator）能铸**，`mint(address to, uint256 amount)` 可铸给任意地址
+- **单地址不限量**：没有 per-address 上限，领多少都行
+- minter 可用 `transferMinter` 轮换（换 operator 私钥时用）
 - 无限授权（`type(uint256).max`）不递减
+
+### `src/TikTapToken.sol`（V1，已废弃）
+
+第一版体验币：公开 `mint(amount)`，单地址累计上限 `mintCap`（默认 1000e18）。
+只能单地址限铸，不能改造，所以被上面的 V2 替换；BEM 仍在用它做演示币。
 
 ### `src/PoolMarket.sol`
 
@@ -113,7 +121,21 @@ forge script contracts/script/Deploy.s.sol:Deploy --root contracts \
 脚本只部署合约本体（`PoolMarket` + 体验币 `TEST` + 本地 mock 的 `OKB` / `BEM`），**不配置市场**：
 `marketId ↔ 代币地址` 由后端的 `markets` 表负责，避免链上和数据库两套配置打架。
 
-`anchorBlock` 取部署时的块高。可选环境变量：`OPERATOR_ADDRESS`（默认部署者）、`MINT_CAP`（默认 `1000e18`）。
+`anchorBlock` 取部署时的块高。可选环境变量：`OPERATOR_ADDRESS`（默认部署者）、`MINT_CAP`（BEM 用，默认 `1000e18`）。
+
+### 只换 TEST（不用动池子）
+
+```bash
+PRIVATE_KEY=$TESTNET_OPERATOR_PKEY MINTER_ADDRESS=$OPERATOR_ADDRESS \
+  forge script contracts/script/DeployTestToken.s.sol:DeployTestToken --root contracts \
+  --rpc-url https://testrpc.xlayer.tech/terigon --broadcast
+```
+
+拿到新地址后：
+1. operator 调 `setMarket(marketId, newToken, true)` 把每个 TEST 市场改绑到新币；
+2. 更新 `.env` 的 `TESTNET_TEST_TOKEN_ADDRESS` 和 `markets` 表的 `token_address`；
+3. 旧币余额要迁移的话，operator 用 `mint(to, amount)` 等量补铸给用户；
+4. 重启后端。旧池子里还压着的旧币可以留着不管，也可以按旧币余额给 `PoolMarket` 补等量新币，让历史轮次的领奖还能兑付。
 
 ## 本地跑一遍完整流程
 

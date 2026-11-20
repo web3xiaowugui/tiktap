@@ -1,4 +1,5 @@
 import { type DependencyList, useCallback, useEffect, useState } from "react";
+import { useEnvironment } from "@/lib/environment";
 
 interface ApiState<T> {
   data: T | null;
@@ -12,6 +13,8 @@ interface ApiState<T> {
  * does not flash an empty state when the user switches markets.
  */
 export function useApi<T>(loader: () => Promise<T>, deps: DependencyList) {
+  // 切换环境时所有 useApi 都自动重新请求，不用整页刷新。
+  const environment = useEnvironment();
   const [state, setState] = useState<ApiState<T>>({
     data: null,
     loading: true,
@@ -40,7 +43,7 @@ export function useApi<T>(loader: () => Promise<T>, deps: DependencyList) {
     };
     // The caller owns the dependency list on purpose.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, nonce]);
+  }, [...deps, nonce, environment]);
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
 

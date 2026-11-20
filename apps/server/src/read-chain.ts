@@ -42,6 +42,8 @@ export interface ChainPool {
   winner: "long" | "short" | null;
   settled: boolean;
   refund: boolean;
+  /** 领奖时扣除的费率（bps）；老合约没这个 getter 时为 0。 */
+  feeBps: number;
 }
 
 interface BetTxPayload {
@@ -80,6 +82,37 @@ function participantsFor(
   return { long: longUsers.size, short: shortUsers.size };
 }
 
+/** 未结算轮读当前 claimFeeBps，已结算轮读结算时的快照 roundClaimFeeBps；读不到按 0。 */
+async function readFeeBpsFor(
+  market: Address,
+  marketId: number,
+  roundIndex: number,
+  settled: boolean,
+): Promise<number> {
+  try {
+    const bps = settled
+      ? Number(
+          await publicClientFor().readContract({
+            address: market,
+            abi: POOL_MARKET_ABI,
+            functionName: "roundClaimFeeBps",
+            args: [BigInt(roundIndex), marketId],
+          }),
+        )
+      : Number(
+          await publicClientFor().readContract({
+            address: market,
+            abi: POOL_MARKET_ABI,
+            functionName: "claimFeeBps",
+            args: [marketId],
+          }),
+        );
+    return bps;
+  } catch {
+    return 0;
+  }
+}
+
 export async function readPool(
   db: Db,
   cfg: ChainConfig,
@@ -95,6 +128,12 @@ export async function readPool(
 
   const participants = participantsFor(db, marketRow.market_id, roundIndex);
   const refund = settled && (winnerRaw === SIDE_VOID || upAmount === 0n || downAmount === 0n);
+  const feeBps = await readFeeBpsFor(
+    requireMarket(cfg),
+    marketRow.market_id,
+    roundIndex,
+    settled,
+  );
 
   return {
     marketId: marketRow.market_id,
@@ -107,6 +146,7 @@ export async function readPool(
     winner: !settled || refund ? null : winnerRaw === SIDE_UP ? "long" : "short",
     settled,
     refund,
+    feeBps,
   };
 }
 
@@ -163,8 +203,8 @@ export async function readMyBet(
 ): Promise<ChainMyBet> {
   const market = requireMarket(cfg);
   const user = db
-    .prepare("SELECT id, address FROM users WHERE env = ? AND LOWER(address) = LOWER(?)")
-    .get(currentEnv(), address) as { id: number; address: Address } | undefined;
+    .prepare("SELECT id, address FROM users WHERE LOWER(address) = LOWER(?)")
+    .get(address) as { id: number; address: Address } | undefined;
   const holder = (user?.address ?? address) as Address;
 
   const [up, down] = (await publicClientFor().readContract({
@@ -273,8 +313,8 @@ export async function readHoldings(
   );
 
   const user = db
-    .prepare("SELECT address FROM users WHERE env = ? AND LOWER(address) = LOWER(?)")
-    .get(currentEnv(), address) as { address: Address } | undefined;
+    .prepare("SELECT address FROM users WHERE LOWER(address) = LOWER(?)")
+    .get(address) as { address: Address } | undefined;
   const holder = (user?.address ?? address) as Address;
 
   const live: Array<{ roundIndex: number; roundOffset: number }> = [{ roundIndex: currentRound, roundOffset: 0 }];

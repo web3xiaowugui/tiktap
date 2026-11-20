@@ -19,6 +19,8 @@ export default defineConfig({
   },
   server: {
     host: "127.0.0.1",
+    // 公网隧道（cloudflared）的域名要放行，否则 Vite 会 403 Blocked request。
+    allowedHosts: true,
     port,
     proxy: {
       // 单后端 /api，环境由请求参数 env 决定。

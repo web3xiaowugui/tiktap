@@ -2,7 +2,7 @@ import { publicClientFor } from "./chain.ts";
 import { POOL_MARKET_ABI } from "./contracts.ts";
 import { HttpError } from "./http.ts";
 import { listMarkets } from "./markets.ts";
-import { readConfig, requireOperator, walletFor, type ChainConfig } from "./tx.ts";
+import { readConfig, requireOperator, walletFor, withAddressLock, type ChainConfig } from "./tx.ts";
 import type { Db } from "./db.ts";
 import { currentEnv } from "./runtime.ts";
 
@@ -80,14 +80,17 @@ export async function allowUserOnChain(
   if (already) return "0x0";
 
   const operator = walletFor(requireOperator(cfg));
-  const hash = await operator.writeContract({
-    address: market,
-    abi: POOL_MARKET_ABI,
-    functionName: "setAllowed",
-    args: [address, true],
-    chain: operator.chain,
-    account: operator.account!,
-  });
+  // 与 gas 充值共用 operator 锁，避免并发首次下注时 setAllowed 撞 nonce。
+  const hash = await withAddressLock("operator", async () =>
+    operator.writeContract({
+      address: market,
+      abi: POOL_MARKET_ABI,
+      functionName: "setAllowed",
+      args: [address, true],
+      chain: operator.chain,
+      account: operator.account!,
+    }),
+  );
   await publicClientFor().waitForTransactionReceipt({ hash });
   return hash;
 }

@@ -61,6 +61,8 @@ export interface BetToken {
   balance: number;
   priceUsd: number;
   icon: TokenIcon;
+  /** 临时停用：按钮保留展示，但不可选中、后端也拒绝下注。 */
+  disabled?: boolean;
 }
 
 /** Pari-mutuel pools for one market + settlement token round. */
@@ -78,6 +80,8 @@ export interface BetPool {
   marketId?: number | null;
   /** 单边池 / 作废轮：按原额退款。 */
   refund?: boolean;
+  /** 领奖扣除的费率（bps），用于估算实际到手百分比。 */
+  feeBps: number;
 }
 
 /** The current user's activity in one pari-mutuel round. */
@@ -111,6 +115,8 @@ export interface Candle {
 export interface Holder {
   id: string;
   address: string;
+  /** 这条聚合记录对应的轮次 startBlock；「仅看本轮」用它过滤。 */
+  roundId?: number;
   name: string;
   avatar: string;
   /** 买涨：笔数 / 金额（带单位）。 */
@@ -161,6 +167,8 @@ export interface MarketActivity {
   time: string;
   /** 对应链上交易，前端可展示缩略 hash。 */
   txHash: string;
+  /** 这条活动属于哪一轮（「仅看本轮」筛选用）。 */
+  roundIndex: number;
   /** Whether the demo account follows this trader; drives 仅看已关注. */
   followed?: boolean;
 }
@@ -209,11 +217,6 @@ export interface Activity {
   price: number;
   marketCap?: number;
   time: string;
-}
-
-export interface Badge {
-  label: string;
-  tone: "gold" | "green" | "purple" | "neutral";
 }
 
 /** 单个下注代币的个人统计（金额用该代币数量，不再折 USD）。 */
@@ -316,12 +319,15 @@ export interface Profile {
   following: number;
   mutual: number;
   joined: string;
-  badges: Badge[];
   cash: number;
   equity: number;
   equityChange24h: number;
   equityChangePct: number;
   rank: number;
+  /** 当前访问者是否已关注 TA（未登录 / 自己 / mock 用户时为 false）。 */
+  isFollowing?: boolean;
+  /** 排行榜里的老 mock 用户：没有真实账号，不能关注。 */
+  isMock?: boolean;
   /** 托管地址（无链上记录 / mock 用户时为空）。 */
   address?: string;
   /** 真实下注统计。 */
@@ -340,6 +346,26 @@ export interface LeaderboardEntry {
   avatar: string;
   pnl: number;
   pnlPct: number;
+}
+
+/** 粉丝 / 关注列表里的一个用户。 */
+export interface FollowEntry {
+  /** 个人页路由用：X handle，没有则用地址。 */
+  handle: string;
+  name: string;
+  avatar: string;
+  address: string;
+  /** TA 自己的粉丝数。 */
+  followers: number;
+  /** 当前访问者是否已关注 TA（未登录为 false）。 */
+  isFollowing: boolean;
+  /** 这一条是不是当前访问者自己。 */
+  isSelf: boolean;
+}
+
+export interface FollowList {
+  total: number;
+  items: FollowEntry[];
 }
 
 export type AuthProvider = "x" | "demo";

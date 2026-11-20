@@ -1,10 +1,12 @@
 import { useMemo } from "react";
 import { TokenIcon } from "@/components/TokenIcon";
 import { useBetToken } from "@/context/BetTokenContext";
+import { useToast } from "@/context/ToastContext";
 import { cn } from "@/lib/cn";
 
 export function BetTokenSelector() {
   const { tokens, loading, selected, selectToken } = useBetToken();
+  const { push } = useToast();
   const orderedTokens = useMemo(
     () =>
       [...tokens].sort((a, b) => {
@@ -26,18 +28,28 @@ export function BetTokenSelector() {
         {!loading &&
           orderedTokens.map((betToken) => {
             const active = selected?.symbol === betToken.symbol;
+            const disabled = Boolean(betToken.disabled);
             return (
               <button
                 key={betToken.symbol}
                 type="button"
-                onClick={() => selectToken(betToken.symbol)}
+                onClick={() => {
+                  if (disabled) {
+                    push(`暂未开放 ${betToken.symbol} 下注`);
+                    return;
+                  }
+                  selectToken(betToken.symbol);
+                }}
                 aria-pressed={active}
-                title={`${betToken.name} · XLayer`}
+                aria-disabled={disabled}
+                title={disabled ? `暂未开放 ${betToken.symbol} 下注` : `${betToken.name} · XLayer`}
                 className={cn(
                   "flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-[13px] font-bold transition",
-                  active
-                    ? "bg-brand text-white shadow-[0_0_18px_rgba(111,92,245,0.18)]"
-                    : "text-muted hover:text-white",
+                  disabled
+                    ? "cursor-not-allowed text-muted2/60 opacity-50"
+                    : active
+                      ? "bg-brand text-white shadow-[0_0_18px_rgba(111,92,245,0.18)]"
+                      : "text-muted hover:text-white",
                 )}
               >
                 <TokenIcon icon={betToken.icon} size={18} />

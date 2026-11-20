@@ -9,10 +9,10 @@ import { publicClientFor, tryGetBlockNumber } from "./chain.ts";
 import { readConfig } from "./config.ts";
 import { backfillBetResults, getRoundInfo, startAutoSettler } from "./settlement.ts";
 import { backfillRoundPrices } from "./round-prices.ts";
-import { currentEnv, runWithEnv, type AppEnv } from "./runtime.ts";
+import { currentEnv, enabledEnvs, runWithEnv, type AppEnv } from "./runtime.ts";
 
 const db = openDb();
-const ENVS: AppEnv[] = ["dev", "testnet"];
+const ENVS: AppEnv[] = enabledEnvs();
 
 for (const env of ENVS) {
   runWithEnv(env, () => {

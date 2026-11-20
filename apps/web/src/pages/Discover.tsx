@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Info } from "lucide-react";
+import { Info, Star, ExternalLink } from "lucide-react";
 import {
   getBetPool,
   getFeed,
@@ -36,12 +36,15 @@ import { PoolPanel } from "@/components/PoolPanel";
 import { TokenIcon } from "@/components/TokenIcon";
 import { useAuth } from "@/context/AuthContext";
 import { useBetToken } from "@/context/BetTokenContext";
+import { useWatchlist } from "@/context/WatchlistContext";
 import { cn } from "@/lib/cn";
-import { fmtSignedUsd, fmtUsd } from "@/lib/format";
-import { getTimelineRounds } from "@/lib/rounds";
+import { fmtBlock, fmtSignedUsd, fmtUsd } from "@/lib/format";
+import { getTimelineRounds, ROUND_INTERVAL_BLOCKS } from "@/lib/rounds";
 import { useApi } from "@/lib/useApi";
+import { txExplorerUrl } from "@/lib/explorer";
 import { useLiveCandles } from "@/lib/useLiveCandles";
 import { useChainClock } from "@/lib/chainClock";
+import { useEnvironment } from "@/lib/environment";
 
 const MIN_BOTTOM_HEIGHT = 180;
 const MAX_BOTTOM_HEIGHT = 657;
@@ -54,10 +57,10 @@ const MAX_CHART_RATIO = 0.78;
  * Bottom row defaults. Currently an even three-way split so the layout can be
  * eyeballed: 观点 / 活动 / 参与者 each take a third of the row.
  */
-const DEFAULT_BOTTOM_SPLIT_RATIO = 0.6;
+const DEFAULT_BOTTOM_SPLIT_RATIO = 0.55;
 const MIN_BOTTOM_SPLIT_RATIO = 0.4;
 const MAX_BOTTOM_SPLIT_RATIO = 0.8;
-const DEFAULT_OPINION_SPLIT_RATIO = 0.62;
+const DEFAULT_OPINION_SPLIT_RATIO = 0.44;
 const MIN_OPINION_SPLIT_RATIO = 0.25;
 const MAX_OPINION_SPLIT_RATIO = 0.75;
 
@@ -99,6 +102,7 @@ export default function Discover() {
   const symbol = (params.get("symbol") ?? "BTC").toUpperCase();
 
   const clock = useChainClock();
+  const environment = useEnvironment();
   const block = clock.block;
   const rounds = getTimelineRounds(block);
   const active =
@@ -130,12 +134,12 @@ export default function Discover() {
   const [timeframe, setTimeframe] = useState<LiveTimeframe>("1m");
   const candlesState = useLiveCandles(symbol, timeframe);
   const holdersState = useApi(
-    () => getHolders(symbol, betToken?.symbol ?? "TEST", selected.startBlock),
-    [symbol, betToken?.symbol, selected.startBlock],
+    () => getHolders(symbol, betToken?.symbol ?? "TEST"),
+    [symbol, betToken?.symbol],
   );
   const opinionsState = useApi(
-    () => getOpinions(symbol, betToken?.symbol ?? "TEST"),
-    [symbol, betToken?.symbol],
+    () => getOpinions(symbol, betToken?.symbol ?? "TEST", 50, user?.address ?? null),
+    [symbol, betToken?.symbol, user?.address],
   );
   const activityState = useApi(
     () => getMarketActivity(symbol, betToken?.symbol ?? "TEST", selected.startBlock),
@@ -181,7 +185,7 @@ export default function Discover() {
 
   useEffect(() => {
     setSelectedStartBlock(null);
-  }, [symbol]);
+  }, [symbol, environment]);
 
   useEffect(() => {
     const element = layoutRef.current;
@@ -208,7 +212,7 @@ export default function Discover() {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
         <p className="text-[13px] text-white">未找到交易对 {symbol}</p>
-        <p className="text-[10px] text-muted2">它可能已下线，或者链接拼写有误。</p>
+        <p className="text-[10px] text-muted2">当前交易对不存在，请检查拼写或返回上一页。</p>
         <button
           type="button"
           onClick={() => navigate("/discover?symbol=BTC")}
@@ -366,10 +370,10 @@ export default function Discover() {
           label="下方区域宽度"
         />
 
-        <div className="hidden min-h-0 flex-1 lg:block">
+        <div className="hidden min-h-0 min-w-0 flex-1 lg:block">
           <HoldersTable
             holders={holdersState.data ?? []}
-            loading={holdersState.loading}
+            loading={holdersState.loading && holdersState.data === null}
             roundNumber={selected.number}
             settled={selected.status === "settled"}
             winner={selectedPoolState.data?.winner ?? undefined}
@@ -381,6 +385,8 @@ export default function Discover() {
 }
 
 function TokenHeader({ token }: { token: Token }) {
+  const { isWatched, toggle } = useWatchlist();
+  const watched = isWatched(token.symbol);
   return (
     <header className="relative flex h-16 shrink-0 items-center justify-center border-b border-line px-3">
       <span className="absolute left-3 top-2 text-[12px] font-medium text-muted2">
@@ -393,6 +399,21 @@ function TokenHeader({ token }: { token: Token }) {
             <h1 className="text-[20px] font-semibold leading-none tracking-tight text-white">
               {token.symbol}
             </h1>
+            <button
+              type="button"
+              onClick={() => toggle(token.symbol)}
+              aria-pressed={watched}
+              aria-label={watched ? "取消自选" : "收藏市场"}
+              title={watched ? "取消自选" : "收藏市场"}
+              className="rounded p-0.5 transition hover:text-white"
+            >
+              <Star
+                className={cn(
+                  "h-4 w-4 transition",
+                  watched ? "fill-brand text-brand" : "text-muted2",
+                )}
+              />
+            </button>
           </div>
           <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted2">
             <span>{token.name}</span>
@@ -419,6 +440,33 @@ function TokenHeader({ token }: { token: Token }) {
   );
 }
 
+/** 统一筛选按钮样式，活动、观点、参与者共用。 */
+function FilterToggle({
+  label,
+  active,
+  onToggle,
+}: {
+  label: string;
+  active: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={active}
+      className={cn(
+        "shrink-0 rounded border px-2 py-1 text-[12px] font-medium transition",
+        active
+          ? "border-brand/40 bg-brand/10 text-brand2"
+          : "border-transparent text-muted2 hover:border-line hover:text-white",
+      )}
+    >
+      {label}
+    </button>
+  );
+}
+
 /** Shared header filter so all three bottom panels read the same. */
 function FollowedFilter({
   active,
@@ -429,19 +477,7 @@ function FollowedFilter({
 }) {
   return (
     <div className="no-scrollbar flex min-w-0 items-center gap-1 overflow-x-auto pl-1">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-pressed={active}
-        className={cn(
-          "shrink-0 rounded border px-2 py-1 text-[12px] font-medium transition",
-          active
-            ? "border-brand/40 bg-brand/10 text-brand2"
-            : "border-transparent text-muted2 hover:border-line hover:text-white",
-        )}
-      >
-        仅看已关注
-      </button>
+      <FilterToggle label="仅看已关注" active={active} onToggle={onToggle} />
     </div>
   );
 }
@@ -460,11 +496,18 @@ function HoldersTable({
   winner?: "long" | "short";
 }) {
   const [onlyFollowed, setOnlyFollowed] = useState(false);
+  const [onlyRound, setOnlyRound] = useState(false);
 
-  const visible = useMemo(
-    () => (onlyFollowed ? holders.filter((holder) => holder.followed) : holders),
-    [onlyFollowed, holders],
-  );
+  const visible = useMemo(() => {
+    let list = onlyRound
+      ? holders.filter((holder) => holder.roundId === roundNumber)
+      : holders;
+    if (onlyFollowed) list = list.filter((holder) => holder.followed);
+    return list;
+  }, [holders, onlyFollowed, onlyRound, roundNumber]);
+
+  // 全部轮次里可能混着已结算轮，按行里有没有「收到」来决定是否展示结算列。
+  const showSettled = settled || visible.some((holder) => holder.received !== undefined);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -476,40 +519,61 @@ function HoldersTable({
           参与者{" "}
           <span className="num text-[12px] text-muted2">({visible.length})</span>
         </span>
-        <FollowedFilter
-          active={onlyFollowed}
-          onToggle={() => setOnlyFollowed((value) => !value)}
-        />
+        <div className="no-scrollbar flex min-w-0 items-center gap-1 overflow-x-auto">
+          <FilterToggle
+            label="仅看本轮"
+            active={onlyRound}
+            onToggle={() => setOnlyRound((value) => !value)}
+          />
+          <FollowedFilter
+            active={onlyFollowed}
+            onToggle={() => setOnlyFollowed((value) => !value)}
+          />
+        </div>
       </div>
 
-      <div
-        className={cn(
-          "grid shrink-0 items-center border-y border-line px-3 py-2 text-center text-[12px] font-medium text-muted2",
-          settled
-            ? "grid-cols-[128px_minmax(0,1fr)_minmax(0,1fr)_48px_minmax(0,0.9fr)_minmax(0,0.85fr)]"
-            : "grid-cols-[128px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.05fr)_minmax(0,0.85fr)]",
-        )}
-      >
-        <span className="text-left">交易者</span>
-        <span className="whitespace-nowrap">买涨(次数/数量)</span>
-        <span className="whitespace-nowrap">买跌(次数/数量)</span>
-        {settled && <span>获胜</span>}
-        <span className="whitespace-nowrap">
-          {settled ? "收到" : "获胜将收到"}
-        </span>
-        <span>盈利</span>
-      </div>
+      <div className="min-h-0 flex-1 overflow-auto">
+        <div
+          className={cn(
+            "sticky top-0 z-10 grid min-w-[490px] items-center border-y border-line bg-panel px-2 py-1.5 text-center text-[11px] font-medium text-muted2",
+            showSettled
+              ? "grid-cols-[84px_104px_minmax(0,1fr)_minmax(0,1fr)_40px_minmax(0,0.95fr)_minmax(0,0.85fr)]"
+              : "grid-cols-[84px_104px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.05fr)_minmax(0,0.85fr)]",
+          )}
+        >
+          <span className="text-left">起始区块</span>
+          <span className="text-left">交易者</span>
+          <span className="flex flex-col leading-tight">
+            <span>买涨</span>
+            <span className="text-[9px] font-normal text-muted2/80">次数/数量</span>
+          </span>
+          <span className="flex flex-col leading-tight">
+            <span>买跌</span>
+            <span className="text-[9px] font-normal text-muted2/80">次数/数量</span>
+          </span>
+          {showSettled && <span>获胜</span>}
+          <span>{showSettled ? "收到" : "将收到"}</span>
+          <span>盈利</span>
+        </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
         {loading && <HolderSkeleton />}
 
         {!loading && visible.length === 0 && (
           <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-1 text-[13px] text-muted2">
-            <p>{onlyFollowed ? "没有已关注的人参与" : "本轮还没有参与者"}</p>
-            {onlyFollowed && (
+            <p>
+              {onlyFollowed
+                ? "没有已关注的人参与"
+                : onlyRound
+                  ? "本轮还没有参与者"
+                  : "还没有参与者"}
+            </p>
+            {(onlyFollowed || onlyRound) && (
               <button
                 type="button"
-                onClick={() => setOnlyFollowed(false)}
+                onClick={() => {
+                  setOnlyFollowed(false);
+                  setOnlyRound(false);
+                }}
                 className="text-[12px] font-medium text-brand2 hover:underline"
               >
                 清除筛选
@@ -523,38 +587,43 @@ function HoldersTable({
             <div
               key={holder.id}
               className={cn(
-                "grid items-center border-b border-line/50 px-3 py-2.5 transition hover:bg-white/[0.07]",
-                settled
-                  ? "grid-cols-[128px_minmax(0,1fr)_minmax(0,1fr)_48px_minmax(0,0.9fr)_minmax(0,0.85fr)]"
-                  : "grid-cols-[128px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.05fr)_minmax(0,0.85fr)]",
+                "grid min-w-[490px] items-center border-b border-line/50 px-2 py-2.5 transition hover:bg-white/[0.07]",
+                showSettled
+                  ? "grid-cols-[84px_104px_minmax(0,1fr)_minmax(0,1fr)_40px_minmax(0,0.95fr)_minmax(0,0.85fr)]"
+                  : "grid-cols-[84px_104px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.05fr)_minmax(0,0.85fr)]",
               )}
             >
+              <div className="num truncate text-[10px] text-muted2" title="起始区块">
+                {holder.roundId !== undefined
+                  ? fmtBlock(holder.roundId * ROUND_INTERVAL_BLOCKS)
+                  : "—"}
+              </div>
               <ProfileLink
                 address={holder.address}
                 className="flex min-w-0 items-center gap-2"
               >
-                <Avatar name={holder.name} gradient={holder.avatar} size={28} />
-                <div className="truncate text-[14px] font-medium text-white">
+                <Avatar name={holder.name} gradient={holder.avatar} size={26} />
+                <div className="truncate text-[13px] font-medium text-white">
                   {holder.name}
                 </div>
               </ProfileLink>
 
-              <div className="num truncate text-center text-[14px] text-white">
+              <div className="num truncate text-center text-[11px] text-white">
                 {holder.longCount > 0
                   ? `${holder.longCount} / ${holder.longAmount}`
                   : "0 / —"}
               </div>
 
-              <div className="num truncate text-center text-[14px] text-white">
+              <div className="num truncate text-center text-[11px] text-white">
                 {holder.shortCount > 0
                   ? `${holder.shortCount} / ${holder.shortAmount}`
                   : "0 / —"}
               </div>
 
-              {settled && (
+              {showSettled && (
                 <div
                   className={cn(
-                    "text-center font-semibold",
+                    "text-center text-[11px] font-semibold",
                     holder.won ? "text-up" : "text-down",
                   )}
                 >
@@ -562,13 +631,13 @@ function HoldersTable({
                 </div>
               )}
 
-              <div className="num truncate text-center text-[14px] text-white">
+              <div className="num truncate text-center text-[11px] text-white">
                 {holder.received ?? "—"}
               </div>
 
               <div
                 className={cn(
-                  "num truncate text-center text-[14px]",
+                  "num truncate text-center text-[11px]",
                   holder.pnl?.startsWith("-") ? "text-down" : "text-up",
                 )}
               >
@@ -598,15 +667,19 @@ function OpinionsPanel({
   onPosted: () => void;
 }) {
   const [onlyRound, setOnlyRound] = useState(false);
+  const [onlyFollowed, setOnlyFollowed] = useState(false);
   const [body, setBody] = useState("");
   const [side, setSide] = useState<"long" | "short" | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const visible = useMemo(
-    () => (onlyRound ? items.filter((item) => item.roundId === roundNumber) : items),
-    [onlyRound, items, roundNumber],
-  );
+  const visible = useMemo(() => {
+    let list = onlyRound
+      ? items.filter((item) => item.roundId === roundNumber)
+      : items;
+    if (onlyFollowed) list = list.filter((item) => item.followed);
+    return list;
+  }, [onlyFollowed, onlyRound, items, roundNumber]);
 
   const canPost = Boolean(address) && body.trim().length > 0 && !pending;
 
@@ -644,18 +717,18 @@ function OpinionsPanel({
           <span className="absolute inset-x-0 bottom-0 h-[1.5px] rounded-full bg-brand" />
         </span>
 
-        <button
-          type="button"
-          onClick={() => setOnlyRound((value) => !value)}
-          className={cn(
-            "rounded-md px-1.5 py-0.5 text-[11px] transition",
-            onlyRound
-              ? "bg-brand/20 text-white"
-              : "bg-panel2 text-muted2 hover:text-white",
-          )}
-        >
-          仅看本轮
-        </button>
+        <div className="no-scrollbar flex min-w-0 items-center gap-1 overflow-x-auto">
+          <FilterToggle
+            label="仅看本轮"
+            active={onlyRound}
+            onToggle={() => setOnlyRound((value) => !value)}
+          />
+          <FilterToggle
+            label="仅看已关注"
+            active={onlyFollowed}
+            onToggle={() => setOnlyFollowed((value) => !value)}
+          />
+        </div>
       </div>
 
       <div className="shrink-0 border-b border-line px-3 py-2.5">
@@ -716,8 +789,22 @@ function OpinionsPanel({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {visible.length === 0 && (
           <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-1 text-[13px] text-muted2">
-            <p>{onlyRound ? "本轮还没有观点" : "这个市场还没有观点"}</p>
-            {onlyRound && (
+            <p>
+              {onlyFollowed
+                ? "没有已关注的人发观点"
+                : onlyRound
+                  ? "本轮还没有观点"
+                  : "这个市场还没有观点"}
+            </p>
+            {onlyFollowed ? (
+              <button
+                type="button"
+                onClick={() => setOnlyFollowed(false)}
+                className="text-[12px] font-medium text-brand2 hover:underline"
+              >
+                清除筛选
+              </button>
+            ) : onlyRound ? (
               <button
                 type="button"
                 onClick={() => setOnlyRound(false)}
@@ -725,7 +812,7 @@ function OpinionsPanel({
               >
                 看全部观点
               </button>
-            )}
+            ) : null}
           </div>
         )}
 
@@ -757,8 +844,11 @@ function OpinionsPanel({
                 </span>
               )}
               {item.roundId !== null && (
-                <span className="num shrink-0 text-[10px] text-muted2">
-                  第 {item.roundId} 轮
+                <span
+                  className="num shrink-0 text-[10px] text-muted2"
+                  title="起始区块"
+                >
+                  {fmtBlock(item.roundId * ROUND_INTERVAL_BLOCKS)}
                 </span>
               )}
               <span className="num ml-auto shrink-0 text-[10px] text-muted2">
@@ -783,11 +873,17 @@ function ActivityPanel({
   items: MarketActivity[];
   roundNumber: number;
 }) {
+  const [onlyRound, setOnlyRound] = useState(false);
   const [onlyFollowed, setOnlyFollowed] = useState(false);
-  const visible = useMemo(
-    () => (onlyFollowed ? items.filter((item) => item.followed) : items),
-    [onlyFollowed, items],
-  );
+  const grid =
+    "grid grid-cols-[84px_124px_minmax(0,0.45fr)_minmax(0,0.55fr)_26px_minmax(0,0.6fr)] items-center gap-1";
+  const visible = useMemo(() => {
+    let list = onlyRound
+      ? items.filter((item) => item.roundIndex === roundNumber)
+      : items;
+    if (onlyFollowed) list = list.filter((item) => item.followed);
+    return list;
+  }, [items, onlyFollowed, onlyRound, roundNumber]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -800,20 +896,50 @@ function ActivityPanel({
           <span className="num text-[12px] text-muted2">({visible.length})</span>
           <span className="absolute inset-x-0 bottom-0 h-[1.5px] rounded-full bg-brand" />
         </span>
-        <FollowedFilter
-          active={onlyFollowed}
-          onToggle={() => setOnlyFollowed((value) => !value)}
-        />
+        <div className="no-scrollbar flex min-w-0 items-center gap-1 overflow-x-auto">
+          <FilterToggle
+            label="仅看本轮"
+            active={onlyRound}
+            onToggle={() => setOnlyRound((value) => !value)}
+          />
+          <FollowedFilter
+            active={onlyFollowed}
+            onToggle={() => setOnlyFollowed((value) => !value)}
+          />
+        </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-auto">
+        <div
+          className={cn(
+            grid,
+            "sticky top-0 z-10 min-w-[440px] border-b border-line/60 bg-panel px-2 py-1.5 text-[12px] text-muted2",
+          )}
+        >
+          <div className="truncate">起始区块</div>
+          <div className="truncate">交易者</div>
+          <div className="truncate">活动</div>
+          <div className="truncate">数量</div>
+          <div className="truncate text-center">交易</div>
+          <div className="truncate text-right">时间</div>
+        </div>
+
         {visible.length === 0 && (
           <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-1 text-[13px] text-muted2">
-            <p>{onlyFollowed ? "没有已关注的人参与" : "本轮还没有活动"}</p>
-            {onlyFollowed && (
+            <p>
+              {onlyFollowed
+                ? "没有已关注的人参与"
+                : onlyRound
+                  ? "本轮还没有活动"
+                  : "还没有活动"}
+            </p>
+            {(onlyFollowed || onlyRound) && (
               <button
                 type="button"
-                onClick={() => setOnlyFollowed(false)}
+                onClick={() => {
+                  setOnlyFollowed(false);
+                  setOnlyRound(false);
+                }}
                 className="text-[12px] font-medium text-brand2 hover:underline"
               >
                 清除筛选
@@ -835,13 +961,20 @@ function ActivityPanel({
                     ? "开奖 · 跌"
                     : "开奖 · 平"
                 : "自动领取";
+          const txUrl = txExplorerUrl(item.txHash);
 
           return (
             <div
               key={item.id}
-              className="grid grid-cols-[148px_minmax(0,0.55fr)_minmax(0,1fr)_minmax(0,0.6fr)] items-center gap-2 border-b border-line/50 px-3 py-2 transition hover:bg-white/[0.07]"
+              className={cn(
+                grid,
+                "min-w-[440px] border-b border-line/50 px-2 py-2 transition hover:bg-white/[0.07]",
+              )}
               title={`tx ${item.txHash}`}
             >
+              <div className="num truncate text-[10px] text-muted2" title="起始区块">
+                {fmtBlock(item.roundIndex * ROUND_INTERVAL_BLOCKS)}
+              </div>
               <ProfileLink
                 address={item.address}
                 className="flex min-w-0 items-center gap-2"
@@ -852,13 +985,15 @@ function ActivityPanel({
                     {item.name}
                   </div>
                   <div className="num truncate text-[10px] leading-tight text-muted2">
-                    {item.txHash.slice(0, 8)}…{item.txHash.slice(-6)}
+                    {item.address
+                      ? `${item.address.slice(0, 6)}…${item.address.slice(-4)}`
+                      : "匿名交易者"}
                   </div>
                 </div>
               </ProfileLink>
               <div
                 className={cn(
-                  "truncate text-[14px] font-medium",
+                  "truncate text-[12px] font-medium",
                   item.kind === "claim"
                     ? "text-brand2"
                     : item.side === "long"
@@ -873,7 +1008,28 @@ function ActivityPanel({
               <div className="num truncate text-left text-[14px] text-white">
                 {item.amount || "—"}
               </div>
-              <div className="num truncate text-right text-[14px] text-muted2">
+              <div className="flex items-center justify-center">
+                {txUrl ? (
+                  <a
+                    href={txUrl}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    title={`在区块浏览器查看交易 ${item.txHash}`}
+                    aria-label="在区块浏览器查看交易"
+                    className="rounded p-1 text-muted2 transition hover:text-white"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                ) : (
+                  <span
+                    className="p-1 text-muted2/40"
+                    title={`当前环境没有区块浏览器 · tx ${item.txHash}`}
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </span>
+                )}
+              </div>
+              <div className="num truncate text-right text-[12px] text-muted2">
                 {item.time}
                 {item.time === "刚刚" ? "" : "前"}
               </div>

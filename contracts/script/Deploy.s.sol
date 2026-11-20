@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Script, console2} from "forge-std/Script.sol";
 import {TikTapToken} from "../src/TikTapToken.sol";
+import {TikTapTestToken} from "../src/TikTapTestToken.sol";
 import {PoolMarket} from "../src/PoolMarket.sol";
 
 /// 部署脚本：只部署合约本体，不配置市场。
@@ -13,7 +14,7 @@ import {PoolMarket} from "../src/PoolMarket.sol";
 /// forge script contracts/script/Deploy.s.sol:Deploy --root contracts \
 ///   --rpc-url http://127.0.0.1:8545 --broadcast --private-key $PRIVATE_KEY
 contract Deploy is Script {
-    function run() external returns (PoolMarket market, TikTapToken testToken) {
+    function run() external returns (PoolMarket market, TikTapTestToken testToken) {
         uint256 deployerKey = vm.envUint("PRIVATE_KEY");
         address operator = vm.envOr("OPERATOR_ADDRESS", vm.addr(deployerKey));
 
@@ -21,8 +22,8 @@ contract Deploy is Script {
 
         vm.startBroadcast(deployerKey);
 
-        // 体验币 TEST + BEM（BEM 是 ERC20；OKB 是原生币，不再部署 mock）
-        testToken = new TikTapToken("TikTap Test", "TEST", mintCap);
+        // 体验币 TEST 用 V2：无总量上限、只有 minter（operator）能铸，单地址不限量
+        testToken = new TikTapTestToken("TikTap Test", "TEST", operator);
         TikTapToken bem = new TikTapToken("BEM", "BEM", mintCap);
 
         market = new PoolMarket(operator);

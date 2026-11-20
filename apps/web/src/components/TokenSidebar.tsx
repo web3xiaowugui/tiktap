@@ -1,23 +1,54 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronRight, Star } from "lucide-react";
-import { getLeaderboard, getOpinions, getSidebarMenu, getTokens } from "@/api";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Star } from "lucide-react";
+import { getFollowingOpinions, getOpinions, getSidebarMenu, getTokens, getLeaderboard } from "@/api";
 import type { SidebarCategoryItem, SidebarTabId, Token } from "@/api/types";
 import { Avatar } from "@/components/Avatar";
 import { TokenIcon } from "@/components/TokenIcon";
-import { useToast } from "@/context/ToastContext";
+import { useAuth } from "@/context/AuthContext";
 import { useWatchlist } from "@/context/WatchlistContext";
 import { cn } from "@/lib/cn";
-import { fmtCompactUsd, fmtPct, fmtPrice } from "@/lib/format";
+import { fmtPct, fmtSignedToken } from "@/lib/format";
 import { useApi } from "@/lib/useApi";
+
+/** 「全部 / 已关注」二级菜单（动态和排行榜共用同一套样式）。 */
+function SubTabs({
+  active,
+  onChange,
+}: {
+  active: "all" | "following";
+  onChange: (id: "all" | "following") => void;
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-1 border-b border-line px-2 py-2">
+      {(["all", "following"] as const).map((id) => (
+        <button
+          key={id}
+          type="button"
+          onClick={() => onChange(id)}
+          className={cn(
+            "inline-flex h-6 shrink-0 items-center rounded px-2 text-[12px] font-bold transition",
+            active === id
+              ? "bg-panel3 text-white"
+              : "text-muted2 hover:bg-panel2 hover:text-white",
+          )}
+        >
+          {id === "all" ? "全部" : "已关注"}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function TokenSidebar({ width }: { width: number }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { push } = useToast();
+  const { user } = useAuth();
   const { symbols, isWatched } = useWatchlist();
   const [tab, setTab] = useState<SidebarTabId>("market");
   const [category, setCategory] = useState<SidebarCategoryItem["id"]>("all");
+  const [feedTab, setFeedTab] = useState<"all" | "following">("all");
+  const [leaderboardTab, setLeaderboardTab] = useState<"all" | "following">("all");
 
   const selected = (searchParams.get("symbol") ?? "BTC").toUpperCase();
   const {
@@ -27,20 +58,44 @@ export function TokenSidebar({ width }: { width: number }) {
     reload: reloadMenu,
   } = useApi(getSidebarMenu, []);
   const { data: tokens, loading } = useApi(getTokens, []);
-  const { data: leaderboard } = useApi(getLeaderboard, []);
-  const opinionsState = useApi(() => getOpinions(selected), [selected]);
+  const leaderboardState = useApi(
+    () => {
+      if (leaderboardTab === "following") {
+        return user?.address
+          ? getLeaderboard({ following: user.address, limit: 100 })
+          : Promise.resolve([]);
+      }
+      return getLeaderboard({ limit: 100 });
+    },
+    [leaderboardTab, user?.address],
+  );
+  const reloadLeaderboard = leaderboardState.reload;
+  const opinionsState = useApi(
+    () => {
+      if (feedTab === "following") {
+        return user?.address
+          ? getFollowingOpinions(user.address)
+          : Promise.resolve([]);
+      }
+      return getOpinions(selected);
+    },
+    [selected, feedTab, user?.address],
+  );
   const reloadOpinions = opinionsState.reload;
 
   // 新观点发布后（或每 5s）刷新左侧动态
   useEffect(() => {
-    const refresh = () => reloadOpinions();
+    const refresh = () => {
+      reloadOpinions();
+      reloadLeaderboard();
+    };
     window.addEventListener("tiktap:activity-refresh", refresh);
     const timer = window.setInterval(refresh, 5_000);
     return () => {
       window.removeEventListener("tiktap:activity-refresh", refresh);
       window.clearInterval(timer);
     };
-  }, [reloadOpinions]);
+  }, [reloadOpinions, reloadLeaderboard]);
 
   const tabs = menu?.tabs ?? [];
   const categories = menu?.categories ?? [];
@@ -126,6 +181,13 @@ export function TokenSidebar({ width }: { width: number }) {
         </div>
       )}
 
+      {activeTab === "activity" || activeTab === "leaderboard" ? (
+        <SubTabs
+          active={activeTab === "activity" ? feedTab : leaderboardTab}
+          onChange={activeTab === "activity" ? setFeedTab : setLeaderboardTab}
+        />
+      ) : null}
+
       <div className="min-h-0 flex-1 overflow-y-auto">
         {showTokens && (
           <>
@@ -134,7 +196,7 @@ export function TokenSidebar({ width }: { width: number }) {
             {!loading && visibleTokens.length === 0 && (
               <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
                 <Star className="h-4 w-4 text-muted2" />
-                <p className="text-[11px] text-muted">这里还没有交易对</p>
+                <p className="text-[11px] text-muted">还没有自选的市场</p>
                 <button
                   type="button"
                   onClick={() => {
@@ -167,7 +229,16 @@ export function TokenSidebar({ width }: { width: number }) {
               <span>交易者</span>
               <span>盈亏</span>
             </div>
-            {(leaderboard ?? []).map((trader) => (
+            {(leaderboardState.data ?? []).length === 0 && (
+              <p className="px-3 py-6 text-center text-[12px] text-muted2">
+                {leaderboardTab === "following"
+                  ? user
+                    ? "关注一些人后，这里会显示他们的排名"
+                    : "登录后查看已关注的人的排名"
+                  : "还没有交易数据"}
+              </p>
+            )}
+            {(leaderboardState.data ?? []).map((trader) => (
               <button
                 key={trader.handle}
                 type="button"
@@ -179,19 +250,21 @@ export function TokenSidebar({ width }: { width: number }) {
                 <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-white">
                   {trader.name}
                 </span>
-                <span className="num text-right text-[12px] font-bold text-up">
-                  {fmtPct(trader.pnlPct)}
+                <span className="num flex shrink-0 flex-col items-end leading-tight">
+                  <span
+                    className={cn(
+                      "text-[12px] font-bold",
+                      trader.pnl >= 0 ? "text-up" : "text-down",
+                    )}
+                  >
+                    {fmtSignedToken(trader.pnl, "TEST", 2)}
+                  </span>
+                  <span className="text-[10px] font-medium text-muted2">
+                    {fmtPct(trader.pnlPct)}
+                  </span>
                 </span>
               </button>
             ))}
-            <button
-              type="button"
-              onClick={() => push("完整排行榜页将在下一次迭代中开放")}
-              className="mx-3 mt-2 flex w-[calc(100%-24px)] items-center justify-center gap-1 rounded border border-line py-2 text-[12px] font-bold text-muted transition hover:border-line2 hover:text-white"
-            >
-              查看完整排行榜
-              <ChevronRight className="h-4 w-4" />
-            </button>
           </div>
         )}
 
@@ -199,7 +272,11 @@ export function TokenSidebar({ width }: { width: number }) {
           <div className="pt-1">
             {(opinionsState.data ?? []).length === 0 && (
               <p className="px-3 py-6 text-center text-[12px] text-muted2">
-                还没有观点
+                {feedTab === "following"
+                  ? user
+                    ? "关注一些人后，这里会出现他们的动态"
+                    : "登录后查看已关注的人的动态"
+                  : "还没有观点"}
               </p>
             )}
 
@@ -209,10 +286,17 @@ export function TokenSidebar({ width }: { width: number }) {
                 className="border-b border-line/50 px-3 py-2.5 last:border-0"
               >
                 <div className="flex items-center gap-2">
-                  <Avatar name={item.name} gradient={item.avatar} size={24} />
-                  <span className="truncate text-[13px] font-medium text-white">
-                    {item.name}
-                  </span>
+                  <Link
+                    to={`/u/${item.address}`}
+                    title="查看个人主页"
+                    onClick={(event) => event.stopPropagation()}
+                    className="flex min-w-0 items-center gap-2 rounded transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/60"
+                  >
+                    <Avatar name={item.name} gradient={item.avatar} size={24} />
+                    <span className="truncate text-[13px] font-medium text-white">
+                      {item.name}
+                    </span>
+                  </Link>
                   {item.side && (
                     <span
                       className={cn(
@@ -278,25 +362,9 @@ function TokenRow({
       )}
     >
       <TokenIcon icon={token.icon} size={24} />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1">
-          <span className="truncate text-[14px] font-medium text-white">{token.symbol}</span>
-          {watched && <Star className="h-3 w-3 shrink-0 fill-brand text-brand" />}
-        </div>
-        <div className="num mt-0.5 truncate text-[12px] text-muted2">
-          {fmtCompactUsd(token.volume24h)} 交易量
-        </div>
-      </div>
-      <div className="shrink-0 text-right">
-        <div className="num text-[14px] text-white">{fmtPrice(token.price)}</div>
-        <div
-          className={cn(
-            "num mt-0.5 text-[12px] font-medium",
-            token.change24h >= 0 ? "text-up" : "text-down",
-          )}
-        >
-          {fmtPct(token.change24h)}
-        </div>
+      <div className="flex min-w-0 flex-1 items-center gap-1">
+        <span className="truncate text-[14px] font-medium text-white">{token.symbol}</span>
+        {watched && <Star className="h-3 w-3 shrink-0 fill-brand text-brand" />}
       </div>
     </button>
   );

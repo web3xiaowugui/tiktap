@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
   ArrowDownRight,
@@ -10,9 +10,10 @@ import {
   Loader2,
   MessageSquare,
   Trophy,
+  UserCheck,
+  UserPlus,
 } from "lucide-react";
 import {
-  faucet,
   getActivity,
   getBetTokens,
   getEquityCurve,
@@ -20,6 +21,7 @@ import {
   getProfile,
   getProfileRounds,
   getWallet,
+  setFollow,
 } from "@/api";
 import type {
   BetToken,
@@ -33,12 +35,12 @@ import type {
 } from "@/api/types";
 import { Avatar } from "@/components/Avatar";
 import { AreaChart } from "@/components/charts/AreaChart";
+import { FollowListDialog } from "@/components/FollowListDialog";
 import { TokenIcon } from "@/components/TokenIcon";
 import { useAuth } from "@/context/AuthContext";
-import { useBetToken } from "@/context/BetTokenContext";
 import { useToast } from "@/context/ToastContext";
 import { cn } from "@/lib/cn";
-import { fmtSignedToken, fmtTokenAmount, fmtUsd, shortAddress } from "@/lib/format";
+import { fmtSignedToken, fmtTokenAmount, shortAddress } from "@/lib/format";
 import { orderBalanceTokens } from "@/lib/tokenOrder";
 import { useApi } from "@/lib/useApi";
 
@@ -86,10 +88,14 @@ function ago(ts: number): string {
 
 export default function Profile() {
   const { handle = "end837" } = useParams();
+  const { user } = useAuth();
   const [range, setRange] = useState<Range>("24h");
   const [token, setToken] = useState<string>("TEST");
 
-  const profileState = useApi(() => getProfile(handle), [handle]);
+  const profileState = useApi(
+    () => getProfile(handle, user?.address),
+    [handle, user?.address],
+  );
   const roundsState = useApi(() => getProfileRounds(handle), [handle]);
   const positionsState = useApi(() => getPositions(handle), [handle]);
   const activityState = useApi(() => getActivity(handle), [handle]);
@@ -111,7 +117,11 @@ export default function Profile() {
   return (
     <div className="h-full min-h-0 overflow-y-auto">
       <div className="px-3 pb-3 pt-4">
-        <ProfileHeader profile={profileState.data} />
+        <ProfileHeader
+          profile={profileState.data}
+          viewer={user?.address}
+          onRefresh={profileState.reload}
+        />
 
         <StatsRow stats={stats} />
 
@@ -122,7 +132,6 @@ export default function Profile() {
               wallet={walletState.data}
               tokens={tokensState.data ?? []}
               loading={walletState.loading}
-              onRefresh={walletState.reload}
             />
             <EquityCard
               stats={stats}
@@ -150,9 +159,60 @@ export default function Profile() {
   );
 }
 
-function ProfileHeader({ profile }: { profile: ProfileType }) {
+function ProfileHeader({
+  profile,
+  viewer,
+  onRefresh,
+}: {
+  profile: ProfileType;
+  viewer?: string | null;
+  onRefresh?: () => void;
+}) {
   const { push } = useToast();
   const [copied, setCopied] = useState(false);
+  const [following, setFollowing] = useState(profile.isFollowing ?? false);
+  const [followers, setFollowers] = useState(profile.followers);
+  const [followPending, setFollowPending] = useState(false);
+  const [listKind, setListKind] = useState<"followers" | "following" | null>(null);
+
+  useEffect(() => {
+    setFollowing(profile.isFollowing ?? false);
+    setFollowers(profile.followers);
+  }, [profile.handle, profile.isFollowing, profile.followers]);
+
+  const isSelf = Boolean(
+    profile.address &&
+      viewer &&
+      profile.address.toLowerCase() === viewer.toLowerCase(),
+  );
+  const canFollow = Boolean(
+    profile.address && viewer && !profile.isMock && !isSelf,
+  );
+
+  const toggleFollow = async () => {
+    if (!canFollow || followPending || !profile.address || !viewer) return;
+    const next = !following;
+    const previousFollowers = followers;
+    setFollowing(next);
+    setFollowers((prev) =>
+      String(Math.max(0, Number(prev) + (next ? 1 : -1))),
+    );
+    setFollowPending(true);
+    try {
+      const result = await setFollow(viewer, profile.address, next);
+      setFollowing(result.isFollowing);
+      setFollowers(String(result.followers));
+      push(next ? "已关注" : "已取消关注", "success");
+      // 让左侧「动态」的已关注列表立刻刷新，不用等 5s 轮询
+      window.dispatchEvent(new Event("tiktap:activity-refresh"));
+    } catch (error) {
+      setFollowing(!next);
+      setFollowers(previousFollowers);
+      push(error instanceof Error ? error.message : "操作失败，请重试", "error");
+    } finally {
+      setFollowPending(false);
+    }
+  };
 
   const copyAddress = () => {
     if (!profile.address) return;
@@ -225,37 +285,81 @@ function ProfileHeader({ profile }: { profile: ProfileType }) {
                 <span className="text-[10.5px] text-muted2">该用户还没有链上记录</span>
               )}
               <span className="text-[10px] text-muted2">加入于 {profile.joined}</span>
+              {profile.isMock ? (
+                <>
+                  <span className="text-[10px] text-muted2">
+                    粉丝 <span className="text-white">{followers}</span>
+                  </span>
+                  <span className="text-[10px] text-muted2">
+                    关注 <span className="text-white">{profile.following}</span>
+                    {profile.mutual > 0 && (
+                      <span className="text-muted2"> · 互关 {profile.mutual}</span>
+                    )}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setListKind("followers")}
+                    title="查看粉丝列表"
+                    className="rounded text-[10px] text-muted2 transition hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/60"
+                  >
+                    粉丝 <span className="num text-white">{followers}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setListKind("following")}
+                    title="查看关注列表"
+                    className="rounded text-[10px] text-muted2 transition hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/60"
+                  >
+                    关注 <span className="num text-white">{profile.following}</span>
+                    {profile.mutual > 0 && (
+                      <span className="text-muted2"> · 互关 {profile.mutual}</span>
+                    )}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 pb-1">
-          {profile.badges.map((badge) => (
-            <BadgeChip key={badge.label} badge={badge} />
-          ))}
+          {canFollow && (
+            <button
+              type="button"
+              onClick={() => void toggleFollow()}
+              disabled={followPending}
+              title={following ? "点击取消关注" : undefined}
+              className={cn(
+                "inline-flex h-7 items-center gap-1 rounded-full px-3 text-[10.5px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60",
+                following
+                  ? "border border-line bg-panel text-muted hover:border-line2 hover:text-white"
+                  : "bg-white text-black hover:bg-white/90",
+              )}
+            >
+              {followPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : following ? (
+                <UserCheck className="h-3 w-3" />
+              ) : (
+                <UserPlus className="h-3 w-3" />
+              )}
+              {following ? "已关注" : "关注"}
+            </button>
+          )}
         </div>
       </div>
+
+      <FollowListDialog
+        open={listKind !== null}
+        kind={listKind ?? "followers"}
+        handle={profile.address ?? profile.handle}
+        viewer={viewer}
+        onClose={() => setListKind(null)}
+        onChanged={onRefresh}
+      />
     </section>
-  );
-}
-
-const BADGE_TONES: Record<ProfileType["badges"][number]["tone"], string> = {
-  gold: "border-[#5d4a1c] bg-[#251d0c] text-[#e7bf58]",
-  green: "border-up/25 bg-up/10 text-up",
-  purple: "border-brand/30 bg-brand/10 text-brand2",
-  neutral: "border-line bg-panel2/50 text-muted",
-};
-
-function BadgeChip({ badge }: { badge: ProfileType["badges"][number] }) {
-  return (
-    <span
-      className={cn(
-        "rounded border px-1.5 py-[2px] text-[8px] leading-[13px]",
-        BADGE_TONES[badge.tone],
-      )}
-    >
-      {badge.label}
-    </span>
   );
 }
 
@@ -265,12 +369,6 @@ function StatsRow({ stats }: { stats: ProfileStats }) {
       label: "参与轮次",
       value: stats.rounds,
       sub: stats.openRounds > 0 ? `${stats.openRounds} 轮进行中` : `${stats.bets} 笔下注`,
-      tone: "text-white",
-    },
-    {
-      label: "总下注",
-      value: fmtUsd(stats.volumeUsd),
-      sub: `${stats.rounds} 个市场轮次`,
       tone: "text-white",
     },
     {
@@ -285,7 +383,7 @@ function StatsRow({ stats }: { stats: ProfileStats }) {
   const byToken = stats.byToken ?? emptyTokenStats();
 
   return (
-    <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
+    <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-3">
       {items.map((item) => (
         <div
           key={item.label}
@@ -338,25 +436,21 @@ type WalletSnapshot = Awaited<ReturnType<typeof getWallet>>;
 
 /**
  * 账户余额：只展示 OKB / BEM / TEST 的链上余额，不再折 USD。
- * 充值走 /api/faucet（演示环境领测试币），提现暂时只给提示。
+ * 充值 / 提现都是裁剪版的占位入口，只给提示。
  */
 function BalanceCard({
   address,
   wallet,
   tokens,
   loading,
-  onRefresh,
 }: {
   address: string | null;
   wallet: WalletSnapshot | null;
   tokens: BetToken[];
   loading: boolean;
-  onRefresh: () => void;
 }) {
   const { user } = useAuth();
-  const { reloadBalances } = useBetToken();
   const { push } = useToast();
-  const [pending, setPending] = useState(false);
 
   const isSelf = Boolean(
     address && user?.address && address.toLowerCase() === user.address.toLowerCase(),
@@ -367,19 +461,9 @@ function BalanceCard({
     balance: wallet?.tokens.find((item) => item.symbol === token.symbol)?.balance ?? 0,
   }));
 
-  const recharge = async () => {
-    if (!address || !isSelf || pending) return;
-    setPending(true);
-    try {
-      await faucet({ address, betToken: "TEST", amount: "100" });
-      onRefresh();
-      reloadBalances();
-      push("已充值 100 TEST", "success");
-    } catch (caught) {
-      push(caught instanceof Error ? caught.message : "充值失败，请重试", "error");
-    } finally {
-      setPending(false);
-    }
+  const recharge = () => {
+    if (!isSelf) return;
+    push("演示环境：充值暂未开放");
   };
 
   return (
@@ -433,20 +517,19 @@ function BalanceCard({
               if (!isSelf) return;
               push("演示环境：提现暂未开放");
             }}
-            disabled={!isSelf || pending}
+            disabled={!isSelf}
             className="h-7 rounded-md border border-line px-3 text-[10.5px] font-medium text-muted transition hover:border-line2 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
           >
             提现
           </button>
           <button
             type="button"
-            onClick={() => void recharge()}
-            disabled={!isSelf || pending}
+            onClick={recharge}
+            disabled={!isSelf}
             className="flex h-7 items-center gap-1 rounded-md bg-brand px-3 text-[10.5px] font-semibold text-white transition hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-40"
-            title="演示环境：充值 100 TEST"
+            title="演示环境：充值暂未开放"
           >
-            {pending && <Loader2 className="h-3 w-3 animate-spin" />}
-            {pending ? "充值中…" : "充值"}
+            充值
           </button>
         </div>
       </div>

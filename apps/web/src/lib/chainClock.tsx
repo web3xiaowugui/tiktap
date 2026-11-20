@@ -16,6 +16,7 @@ import {
   roundStartFor,
 } from "@/lib/rounds";
 import { useNow } from "@/lib/useNow";
+import { useEnvironment } from "@/lib/environment";
 
 const POLL_MS = 4_000;
 
@@ -47,6 +48,7 @@ const ChainClockContext = createContext<ChainClockValue | null>(null);
 
 export function ChainClockProvider({ children }: { children: ReactNode }) {
   const now = useNow(1_000);
+  const environment = useEnvironment();
   const [sample, setSample] = useState<{ info: ChainRound; at: number } | null>(null);
   const [nonce, setNonce] = useState(0);
   const [phaseTicks, setPhaseTicks] = useState(0);
@@ -70,7 +72,7 @@ export function ChainClockProvider({ children }: { children: ReactNode }) {
       alive = false;
       clearInterval(timer);
     };
-  }, [nonce]);
+  }, [nonce, environment]);
 
   const refresh = useCallback(() => setNonce((value) => value + 1), []);
 

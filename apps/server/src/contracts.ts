@@ -32,6 +32,14 @@ export const ERC20_ABI = parseAbi([
   "function mint(uint256 amount)",
 ]);
 
+/** 新版 TEST：只有 minter（operator）能铸，且可以铸给任意地址。 */
+export const TEST_TOKEN_ABI = parseAbi([
+  "function balanceOf(address account) view returns (uint256)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function mint(address to, uint256 amount)",
+]);
+
 export const WOKB_ABI = parseAbi([
   "function balanceOf(address account) view returns (uint256)",
   "function deposit() payable",

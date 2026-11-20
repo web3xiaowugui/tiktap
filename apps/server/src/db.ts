@@ -2,7 +2,6 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
-import { currentEnv } from "./runtime.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const defaultDbPath = resolve(here, "../../../data/tiktap.db");
@@ -226,6 +225,57 @@ function migrateToEnv(db: Db): void {
   }
 }
 
+/**
+ * 用户是全局身份，不按环境拆行。
+ * 旧库里同一 X id 在 dev/testnet 各有一行：保留最早的一行，
+ * 后面的行把 x_user_id 置空作为历史托管地址，避免唯一索引冲突。
+ */
+function migrateUsersGlobal(db: Db): void {
+  if (!tableExists(db, "users") || !hasColumn(db, "users", "env")) return;
+
+  db.exec("PRAGMA foreign_keys = OFF");
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.exec("DROP TABLE IF EXISTS users_global");
+    db.exec(`
+      CREATE TABLE users_global (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        email      TEXT NOT NULL,
+        address    TEXT NOT NULL,
+        enc_pkey   TEXT NOT NULL,
+        x_user_id  TEXT,
+        x_handle   TEXT,
+        x_name     TEXT,
+        creator    TEXT,
+        created_at INTEGER NOT NULL,
+        UNIQUE (email),
+        UNIQUE (address)
+      )
+    `);
+    db.exec(`
+      INSERT INTO users_global (id, email, address, enc_pkey, x_user_id, x_handle, x_name, creator, created_at)
+      SELECT id, email, address, enc_pkey,
+        CASE
+          WHEN x_user_id IS NOT NULL AND EXISTS (
+            SELECT 1 FROM users older
+            WHERE older.x_user_id = users.x_user_id AND older.id < users.id
+          ) THEN NULL
+          ELSE x_user_id
+        END,
+        x_handle, x_name, creator, created_at
+      FROM users
+    `);
+    db.exec("DROP TABLE users");
+    db.exec("ALTER TABLE users_global RENAME TO users");
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  } finally {
+    db.exec("PRAGMA foreign_keys = ON");
+  }
+}
+
 /** 打开（或创建）本地库，并把 schema 幂等地应用一遍。 */
 export function openDb(path: string = process.env.DB_PATH ?? defaultDbPath): Db {
   mkdirSync(dirname(path), { recursive: true });
@@ -243,16 +293,15 @@ export function openDb(path: string = process.env.DB_PATH ?? defaultDbPath): Db 
   ensureColumn(db, "opinions", "bet_count", "bet_count INTEGER");
   ensureColumn(db, "bets", "fee_wei", "fee_wei TEXT");
   migrateToEnv(db);
+  migrateUsersGlobal(db);
 
   db.exec(readFileSync(schemaPath, "utf8"));
   db.exec("DROP INDEX IF EXISTS idx_users_x");
-  db.exec("CREATE UNIQUE INDEX idx_users_x ON users(env, x_user_id)");
+  db.exec("CREATE UNIQUE INDEX idx_users_x ON users(x_user_id)");
   return db;
 }
 
 export function countUsers(db: Db): number {
-  const row = db
-    .prepare("SELECT COUNT(*) AS n FROM users WHERE env = ?")
-    .get(currentEnv()) as { n: number };
+  const row = db.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number };
   return Number(row.n ?? 0);
 }

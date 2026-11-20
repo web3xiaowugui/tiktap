@@ -93,21 +93,23 @@ export const BET_TOKENS: BetToken[] = [
   {
     symbol: "BEM",
     name: "BEM",
-    balance: 12_500,
+    // 余额是 0 占位：真实余额由 /api/wallet/:address 按当前链叠加，
+    // 否则切环境、刷新页面时会先闪出一串假数字。
+    balance: 0,
     priceUsd: 0.012,
     icon: { bg: "linear-gradient(135deg,#c084fc,#6d28d9)", glyph: "B" },
   },
   {
     symbol: "OKB",
     name: "OKB",
-    balance: 3.42,
+    balance: 0,
     priceUsd: 48.5,
     icon: { bg: "linear-gradient(135deg,#3a3d48,#08080a 72%)", glyph: "O" },
   },
   {
     symbol: "TEST",
     name: "TEST",
-    balance: 1_000,
+    balance: 0,
     priceUsd: 1,
     icon: { bg: "linear-gradient(135deg,#94a3b8,#334155)", glyph: "T" },
   },
@@ -562,12 +564,6 @@ export const DEMO_PROFILE: Profile = {
   following: 17,
   mutual: 0,
   joined: "2026年4月",
-  badges: [
-    { label: "前100", tone: "gold" },
-    { label: "平均持有 6 小时", tone: "neutral" },
-    { label: "20 笔交易", tone: "neutral" },
-    { label: "加入于 2026年4月", tone: "neutral" },
-  ],
   cash: 114_051.44,
   equity: 623_470.28,
   equityChange24h: 31_258.84,

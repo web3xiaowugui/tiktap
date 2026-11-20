@@ -8,10 +8,11 @@ import {
   safeReturnTo,
 } from "./x-oauth.ts";
 import type { Db } from "./db.ts";
-import { currentEnv } from "./runtime.ts";
+import { currentEnv, enabledEnvs, ENV_LABELS } from "./runtime.ts";
 import { findMarket, listMarkets } from "./markets.ts";
-import { placeBet, mintForUser } from "./betting.ts";
+import { placeBet, mintForUser, readMintedAmount } from "./betting.ts";
 import { createUser } from "./users.ts";
+import { createSession, requireSession } from "./sessions.ts";
 import { syncMarkets } from "./market-sync.ts";
 import {
   claimForUser,
@@ -22,10 +23,16 @@ import {
   winnerFromLabel,
 } from "./settlement.ts";
 import { readConfig } from "./tx.ts";
+import { readLeaderboard } from "./leaderboard.ts";
 import { getRoundPrice, ensureRoundPrices } from "./round-prices.ts";
 import { readMarketActivity } from "./activity.ts";
-import { readRoundHolders } from "./holders.ts";
-import { createOpinion, readOpinions, readOpinionsBySymbol } from "./opinions.ts";
+import { readHolders } from "./holders.ts";
+import {
+  createOpinion,
+  readFollowingOpinions,
+  readOpinions,
+  readOpinionsBySymbol,
+} from "./opinions.ts";
 import {
   findProfileUser,
   readProfile,
@@ -34,6 +41,9 @@ import {
   readProfileOpenRounds,
   readProfileRounds,
 } from "./profiles.ts";
+import { followCounts, followUser, isFollowing, unfollowUser } from "./follows.ts";
+import { readFollowList } from "./follow-lists.ts";
+import { addWatchlist, readWatchlist, removeWatchlist } from "./watchlist.ts";
 import { listBets } from "./bets.ts";
 import {
   marketFor,
@@ -50,7 +60,6 @@ import {
   DEMO_PROFILE,
   feedFor,
 
-  LEADERBOARD,
   makeCandles,
 
   MY_HOLDINGS,
@@ -73,6 +82,29 @@ function requireBetToken(symbol: string) {
   const token = BET_TOKENS.find((entry) => entry.symbol === symbol);
   if (!token) throw new HttpError(404, `未知下注代币：${symbol}`);
   return token;
+}
+
+/** 临时停用的下注代币（逗号分隔），例如 DISABLED_BET_TOKENS=OKB,BEM。 */
+function disabledBetTokens(): Set<string> {
+  return new Set(
+    (process.env.DISABLED_BET_TOKENS ?? "")
+      .split(",")
+      .map((value) => value.trim().toUpperCase())
+      .filter(Boolean),
+  );
+}
+
+function isBetTokenDisabled(symbol: string): boolean {
+  return disabledBetTokens().has(symbol.toUpperCase());
+}
+
+/** 结算属管理操作：除自动结算外，HTTP 触发必须带 X-Admin-Key。 */
+function requireAdmin(req: { headers: Record<string, string | string[] | undefined> }): void {
+  const expected = process.env.ADMIN_KEY?.trim() ?? "";
+  const given = String(req.headers["x-admin-key"] ?? "").trim();
+  if (!expected || given !== expected) {
+    throw new HttpError(403, "无权限：该管理接口需要 X-Admin-Key");
+  }
 }
 
 function readRoundBlock(query: URLSearchParams): number {
@@ -107,7 +139,51 @@ function readQuickAmounts(db: Db, symbol: string): number[] {
   return [...(BET_QUICK_AMOUNTS[symbol] ?? FALLBACK_QUICK_AMOUNTS)];
 }
 
+/** 演示登录开关：只有显式 ALLOW_DEMO_LOGIN=1 才允许匿名/demo 账号（本地开发用）。 */
+function demoLoginEnabled(): boolean {
+  return (process.env.ALLOW_DEMO_LOGIN ?? "").trim() === "1";
+}
+
 export function registerRoutes(router: Router, db: Db): void {
+  // ---- 统一登录守卫：除公开入口外，所有业务接口都要求会话 token ----
+  router.useGuard((req, pathname) => {
+    if (pathname === "/api/health") return;
+    if (pathname.startsWith("/api/auth/")) return;
+    // 建号入口只给 demo 模式用（handler 里还会再校验开关）
+    if (pathname === "/api/users" && (req.method ?? "GET").toUpperCase() === "POST") {
+      return;
+    }
+    // 管理接口用 X-Admin-Key 鉴权（handler 内部校验），不走会话
+    if (pathname === "/api/markets/sync" || pathname.startsWith("/api/settle")) return;
+    // 前端外壳需要的静态元数据（登录前后都要渲染）
+    if (
+      pathname === "/api/envs" ||
+      pathname === "/api/tokens" ||
+      pathname.startsWith("/api/tokens/") ||
+      pathname === "/api/bet-tokens" ||
+      pathname === "/api/sidebar-menu"
+    ) {
+      return;
+    }
+    const who = requireSession(db, req);
+    // 生产（关闭 demo）只认 X 授权账号：没有 x_user_id 的旧 demo 账号一律拒绝
+    if (!demoLoginEnabled()) {
+      const row = db
+        .prepare("SELECT x_user_id FROM users WHERE id = ?")
+        .get(who.userId) as { x_user_id: string | null } | undefined;
+      if (!row?.x_user_id) throw new HttpError(403, "请先使用 X 账号登录");
+    }
+  });
+
+  // ---- 环境列表（前端下拉用它，部署时只暴露 APP_ENVS 里配置的环境）----
+  router.get("/api/envs", () => {
+    const environments = enabledEnvs();
+    return {
+      environments: environments.map((id) => ({ id, label: ENV_LABELS[id] })),
+      defaultEnv: environments[0]!,
+    };
+  });
+
   // ---- 交易对 / 侧栏 ----
   router.get("/api/tokens", () => TOKENS);
   router.get("/api/tokens/:symbol", ({ params }) => requireToken(params.symbol));
@@ -121,33 +197,49 @@ export function registerRoutes(router: Router, db: Db): void {
           .all(currentEnv()) as Array<{ bet_token: string }>
       ).map((row) => row.bet_token),
     );
-    return BET_TOKENS.filter((token) => enabled.has(token.symbol));
+    const disabled = disabledBetTokens();
+    // 停用的代币仍然返回（按钮保留），带 disabled 标记，由前端置灰、后端拒绝下注。
+    return BET_TOKENS.filter((token) => enabled.has(token.symbol)).map((token) => ({
+      ...token,
+      disabled: disabled.has(token.symbol),
+    }));
   });
 
   router.get("/api/sidebar-menu", () => SIDEBAR_MENU);
-  router.get("/api/leaderboard", () => LEADERBOARD);
+  // 排行榜：当前环境下按净盈利排前 100；following=地址 时只返回关注的人
+  router.get("/api/leaderboard", ({ query }) => {
+    const limit = Math.min(Math.max(Number(query.get("limit") ?? 100), 1), 100);
+    const followingAddress = query.get("following");
+    const viewerId = followingAddress
+      ? (findProfileUser(db, followingAddress)?.id ?? null)
+      : null;
+    if (followingAddress && viewerId === null) return [];
+    return readLeaderboard(db, limit, viewerId);
+  });
 
-  // ---- 建号（托管地址 + 白名单 + gas）----
+  // ---- 建号（demo 模式专用；生产走 /api/auth/x/session，由服务端建号）----
   router.post("/api/users", async ({ req }) => {
+    if (!demoLoginEnabled()) {
+      throw new HttpError(403, "匿名建号已关闭，请使用 X 账号登录");
+    }
     const body = await readJson<{
-      creator?: string;
-      xUserId?: string;
       handle?: string;
       name?: string;
     }>(req);
-    return createUser(db, body.creator, {
-      xUserId: body.xUserId?.trim() || undefined,
+    // 注意：不接受客户端传的 xUserId，避免冒充别人的 X 身份。
+    const created = await createUser(db, undefined, {
       xHandle: body.handle?.trim() || undefined,
       xName: body.name?.trim() || undefined,
     });
+    return { ...created, token: createSession(db, created.id, created.address) };
   });
 
   router.get("/api/users/:address", async ({ params }) => {
     const row = db
       .prepare(
-        "SELECT id, address, x_user_id, x_handle, x_name, created_at FROM users WHERE env = ? AND LOWER(address) = LOWER(?)",
+        "SELECT id, address, x_user_id, x_handle, x_name, created_at FROM users WHERE LOWER(address) = LOWER(?)",
       )
-      .get(currentEnv(), params.address) as
+      .get(params.address) as
       | {
           id: number;
           address: string;
@@ -169,33 +261,70 @@ export function registerRoutes(router: Router, db: Db): void {
   });
 
   // ---- 领体验币：只发 TEST ----
+  router.get("/api/faucet/status", ({ query }) => {
+    const address = query.get("address");
+    if (!address) throw new HttpError(400, "缺少 address");
+    const user = db
+      .prepare("SELECT id FROM users WHERE LOWER(address) = LOWER(?)")
+      .get(address) as { id: number } | undefined;
+    if (!user) throw new HttpError(404, `用户不存在：${address}`);
+    // 新版 TEST 不限量：只报当前这枚币的累计已领，供弹框展示。
+    const tokenRow = db
+      .prepare(
+        "SELECT token_address FROM markets WHERE env = ? AND bet_token = 'TEST' AND token_address IS NOT NULL LIMIT 1",
+      )
+      .get(currentEnv()) as { token_address: string } | undefined;
+    return { claimed: readMintedAmount(db, user.id, tokenRow?.token_address) };
+  });
+
   router.post("/api/faucet", async ({ req }) => {
-    const body = await readJson<{ address?: string; betToken?: string; amount?: string | number }>(req);
-    if (!body.address) throw new HttpError(400, "缺少 address");
+    if (currentEnv() === "mainnet") {
+      throw new HttpError(400, "主网不发放测试币");
+    }
+    const who = requireSession(db, req);
+    const body = await readJson<{ address?: string; betToken?: string }>(req);
     if (!body.betToken) throw new HttpError(400, "缺少 betToken");
-    if (body.amount === undefined) throw new HttpError(400, "缺少 amount");
     if (body.betToken.trim().toUpperCase() !== "TEST") {
       throw new HttpError(400, "领测试币只发 TEST");
     }
-    return mintForUser(db, body.address, "TEST", String(body.amount));
+
+    // 每地址冷却，防止同一账号反复刷 mint 消耗 operator gas。
+    const cooldownSec = Number(process.env.FAUCET_COOLDOWN_SEC ?? "300");
+    if (Number.isFinite(cooldownSec) && cooldownSec > 0) {
+      const last = db
+        .prepare(
+          "SELECT created_at FROM txs WHERE user_id = ? AND env = ? AND kind = 'mint' AND status = 'confirmed' ORDER BY created_at DESC LIMIT 1",
+        )
+        .get(who.userId, currentEnv()) as { created_at: number } | undefined;
+      const waitMs = last ? last.created_at + cooldownSec * 1000 - Date.now() : 0;
+      if (waitMs > 0) {
+        throw new HttpError(429, `刚领过，${Math.ceil(waitMs / 1000)} 秒后再试`);
+      }
+    }
+
+    // 服务端硬性限额：每次固定 1000 TEST，不信任客户端传来的金额，
+    // 避免有人直接调接口铸出任意数量的币。
+    return mintForUser(db, who.address, "TEST", "1000");
   });
 
   // ---- 下注（后端代签，txHash 落库）----
   router.post("/api/bet", async ({ req }) => {
+    const who = requireSession(db, req);
     const body = await readJson<{
-      address?: string;
       market?: string;
       betToken?: string;
       side?: string;
       amount?: string | number;
     }>(req);
-    if (!body.address) throw new HttpError(400, "缺少 address");
     if (!body.market) throw new HttpError(400, "缺少 market");
     if (!body.betToken) throw new HttpError(400, "缺少 betToken");
     if (!body.side) throw new HttpError(400, "缺少 side");
     if (body.amount === undefined) throw new HttpError(400, "缺少 amount");
+    if (isBetTokenDisabled(body.betToken)) {
+      throw new HttpError(400, `${body.betToken.toUpperCase()} 已暂停下注`);
+    }
     return placeBet(db, {
-      address: body.address,
+      address: who.address,
       market: body.market,
       betToken: body.betToken,
       side: body.side,
@@ -251,6 +380,7 @@ export function registerRoutes(router: Router, db: Db): void {
 
   // ---- 结算（单个市场 / 一整轮）----
   router.post("/api/settle", async ({ req }) => {
+    requireAdmin(req);
     const body = await readJson<{
       market?: string;
       betToken?: string;
@@ -276,6 +406,7 @@ export function registerRoutes(router: Router, db: Db): void {
   });
 
   router.post("/api/settle/round", async ({ req }) => {
+    requireAdmin(req);
     const body = await readJson<{ roundIndex?: number; winners?: Record<string, string> }>(req);
     const cfg = readConfig();
     const roundIndex = body.roundIndex ?? (await defaultRound(cfg));
@@ -284,13 +415,12 @@ export function registerRoutes(router: Router, db: Db): void {
 
   // ---- 领奖 ----
   router.post("/api/claim", async ({ req }) => {
+    const who = requireSession(db, req);
     const body = await readJson<{
-      address?: string;
       market?: string;
       betToken?: string;
       roundIndex?: number;
     }>(req);
-    if (!body.address) throw new HttpError(400, "缺少 address");
     if (!body.market) throw new HttpError(400, "缺少 market");
     if (!body.betToken) throw new HttpError(400, "缺少 betToken");
     if (body.roundIndex === undefined) throw new HttpError(400, "缺少 roundIndex");
@@ -298,10 +428,13 @@ export function registerRoutes(router: Router, db: Db): void {
     const row = findMarket(db, body.market.toUpperCase(), body.betToken.toUpperCase());
     if (!row) throw new HttpError(404, `未知市场：${body.market}/${body.betToken}`);
 
-    return claimForUser(db, readConfig(), body.address, row.market_id, body.roundIndex);
+    return claimForUser(db, readConfig(), who.address, row.market_id, body.roundIndex);
   });
   // ---- 链上配置自检（人工触发一次即可）----
-  router.post("/api/markets/sync", async () => syncMarkets(db));
+  router.post("/api/markets/sync", async ({ req }) => {
+    requireAdmin(req);
+    return syncMarkets(db);
+  });
   // ---- 市场（标的 × 下注代币）----
   router.get("/api/markets", () => listMarkets(db));
 
@@ -331,6 +464,7 @@ export function registerRoutes(router: Router, db: Db): void {
       betTokenSymbol: betToken,
       roundStartBlock,
       ...pool,
+      feeBps: 0,
     };
   });
 
@@ -368,6 +502,7 @@ export function registerRoutes(router: Router, db: Db): void {
   router.get("/api/quick-amounts/:symbol", ({ params }) => readQuickAmounts(db, params.symbol));
 
   router.put("/api/quick-amounts/:symbol", async ({ req, params }) => {
+    requireSession(db, req);
     const body = await readJson<{ amounts?: unknown }>(req);
     if (!isQuickAmounts(body.amounts)) {
       throw new HttpError(400, "快捷金额必须是 5 个正数");
@@ -393,17 +528,24 @@ export function registerRoutes(router: Router, db: Db): void {
   router.get("/api/holders", ({ query }) => {
     const symbol = requireToken(query.get("symbol") ?? "").symbol;
     const betToken = requireBetToken(query.get("token") ?? "TEST").symbol;
-    const roundStartBlock = readRoundBlock(query);
+    const roundRaw = query.get("round");
     if (!readConfig().market) return [];
 
     const row = marketFor(db, symbol, betToken);
-    return readRoundHolders(db, row, roundIndexFor(roundStartBlock));
+    const roundIndex = roundRaw ? roundIndexFor(readRoundBlock(query)) : null;
+    return readHolders(db, row, roundIndex);
   });
 
   // ---- 观点（市场级；发布时记录当时轮次）----
   router.get("/api/opinions", ({ query }) => {
-    const symbol = requireToken(query.get("symbol") ?? "").symbol;
     const limit = Number(query.get("limit") ?? 50);
+    // 左侧动态「已关注」：按当前用户的关注关系，跨标的全量返回
+    const following = query.get("following");
+    if (following) {
+      return readFollowingOpinions(db, following, limit);
+    }
+
+    const symbol = requireToken(query.get("symbol") ?? "").symbol;
     if (!readConfig().market) return [];
 
     const rawToken = query.get("token");
@@ -413,10 +555,16 @@ export function registerRoutes(router: Router, db: Db): void {
     }
     const betToken = requireBetToken(rawToken).symbol;
     const row = marketFor(db, symbol, betToken);
-    return readOpinions(db, row, limit);
+    // viewer 存在时给每条观点打「是否已关注」标记，供「仅看已关注」筛选
+    const viewerAddress = query.get("viewer");
+    const viewerId = viewerAddress
+      ? (findProfileUser(db, viewerAddress)?.id ?? null)
+      : null;
+    return readOpinions(db, row, limit, viewerId);
   });
 
   router.post("/api/opinions", async ({ req }) => {
+    const who = requireSession(db, req);
     const body = await readJson<{
       address?: string;
       market?: string;
@@ -424,7 +572,6 @@ export function registerRoutes(router: Router, db: Db): void {
       body?: string;
       side?: string | null;
     }>(req);
-    if (!body.address) throw new HttpError(400, "缺少 address");
     if (!body.market) throw new HttpError(400, "缺少 market");
     if (!body.betToken) throw new HttpError(400, "缺少 betToken");
     if (!body.body) throw new HttpError(400, "缺少正文");
@@ -441,7 +588,7 @@ export function registerRoutes(router: Router, db: Db): void {
     }
 
     return createOpinion(db, row, {
-      address: body.address,
+      address: who.address,
       body: body.body,
       side: body.side ?? null,
       roundId,
@@ -452,17 +599,17 @@ export function registerRoutes(router: Router, db: Db): void {
   );
 
   /**
-   * 一轮活动流（市场级：标的 + 下注代币）：下注 / 开奖 / 自动领奖，全部读库。
+   * 活动流（市场级：标的 + 下注代币）：下注 / 开奖 / 自动领奖，全部读库。
+   * 默认返回最近多轮，「仅看本轮」由前端按 roundIndex 过滤。
    */
   router.get("/api/activity", ({ query }) => {
     const symbol = requireToken(query.get("symbol") ?? "").symbol;
     const betToken = requireBetToken(query.get("token") ?? "TEST").symbol;
-    const roundStartBlock = readRoundBlock(query);
     const cfg = readConfig();
     if (!cfg.market) return [];
 
     const row = marketFor(db, symbol, betToken);
-    return readMarketActivity(db, row, roundIndexFor(roundStartBlock));
+    return readMarketActivity(db, row);
   });
 
   // ---- 我的持仓 ----
@@ -474,17 +621,101 @@ export function registerRoutes(router: Router, db: Db): void {
   });
 
   // ---- 个人主页（读库：bets / opinions / users）----
-  router.get("/api/profiles/:handle", ({ params }) => {
+  router.get("/api/profiles/:handle", ({ params, query }) => {
     const user = findProfileUser(db, params.handle);
     // 老 mock 交易者（排行榜/搜索里还没接库的 handle）退回 mock 身份，统计为空。
-    if (!user) return profileFor(params.handle);
-    return readProfile(db, user);
+    if (!user) return { ...profileFor(params.handle), isMock: true };
+    const viewerAddress = query.get("viewer");
+    const viewer = viewerAddress ? findProfileUser(db, viewerAddress) : undefined;
+    return readProfile(db, user, viewer?.id ?? null);
   });
+
+  // ---- 粉丝 / 关注列表（分页，带访问者的关注状态）----
+  const followList = (
+    handle: string,
+    kind: "followers" | "following",
+    query: URLSearchParams,
+  ) => {
+    const user = findProfileUser(db, handle);
+    if (!user) return { total: 0, items: [] };
+    const viewerAddress = query.get("viewer");
+    const viewer = viewerAddress ? findProfileUser(db, viewerAddress) : undefined;
+    const rawLimit = Number.parseInt(query.get("limit") ?? "", 10);
+    const rawOffset = Number.parseInt(query.get("offset") ?? "", 10);
+    const limit = Number.isFinite(rawLimit) ? Math.min(100, Math.max(1, rawLimit)) : 50;
+    const offset = Number.isFinite(rawOffset) ? Math.max(0, rawOffset) : 0;
+    return readFollowList(db, user, kind, viewer?.id ?? null, limit, offset);
+  };
+
+  router.get("/api/profiles/:handle/followers", ({ params, query }) =>
+    followList(params.handle, "followers", query),
+  );
+
+  router.get("/api/profiles/:handle/following", ({ params, query }) =>
+    followList(params.handle, "following", query),
+  );
+
+  // ---- 关注 / 取关（全局身份，不按 env 拆）----
+  router.post("/api/follow", async ({ req }) => {
+    const who = requireSession(db, req);
+    const body = await readJson<{
+      handle?: string;
+      follow?: boolean;
+    }>(req);
+    if (!body.handle) throw new HttpError(400, "缺少 handle");
+
+    const viewer = findProfileUser(db, who.address);
+    if (!viewer) throw new HttpError(404, "当前用户不存在");
+    const target = findProfileUser(db, body.handle);
+    if (!target) throw new HttpError(404, "用户不存在");
+    if (viewer.id === target.id) throw new HttpError(400, "不能关注自己");
+
+    if (body.follow === false) {
+      unfollowUser(db, viewer.id, target.id);
+    } else {
+      followUser(db, viewer.id, target.id);
+    }
+
+    const counts = followCounts(db, target.id);
+    return {
+      followers: counts.followers,
+      following: counts.following,
+      mutual: counts.mutual,
+      isFollowing: isFollowing(db, viewer.id, target.id),
+    };
+  });
+
+  // ---- 自选（按账号存库，跨环境共用）----
+  router.get("/api/watchlist", ({ query }) => {
+    const address = query.get("address");
+    if (!address) throw new HttpError(400, "缺少 address");
+    const user = findProfileUser(db, address);
+    return { symbols: user ? readWatchlist(db, user.id) : [] };
+  });
+
+  router.post("/api/watchlist", async ({ req }) => {
+    const who = requireSession(db, req);
+    const body = await readJson<{
+      symbol?: string;
+      watched?: boolean;
+    }>(req);
+    if (!body.symbol) throw new HttpError(400, "缺少 symbol");
+
+    const user = findProfileUser(db, who.address);
+    if (!user) throw new HttpError(404, "用户不存在");
+    const symbol = requireToken(body.symbol).symbol;
+    if (body.watched === false) {
+      removeWatchlist(db, user.id, symbol);
+    } else {
+      addWatchlist(db, user.id, symbol);
+    }
+    return { symbols: readWatchlist(db, user.id) };
+  });
+
   router.get("/api/profiles/:handle/positions", ({ params }) => {
     const user = findProfileUser(db, params.handle);
     return user ? readProfileOpenRounds(db, user.address) : [];
-  });
-  router.get("/api/profiles/:handle/rounds", ({ params, query }) => {
+  });  router.get("/api/profiles/:handle/rounds", ({ params, query }) => {
     const user = findProfileUser(db, params.handle);
     if (!user) return [];
     const limit = Number(query.get("limit") ?? 100);
@@ -508,12 +739,17 @@ export function registerRoutes(router: Router, db: Db): void {
   });
 
   // ---- 登录 ----
-  router.post("/api/auth/demo", () => ({
-    name: DEMO_PROFILE.name,
-    handle: DEMO_PROFILE.handle,
-    email: "end@tiktap.demo",
-    provider: "demo",
-  }));
+  router.post("/api/auth/demo", () => {
+    if (!demoLoginEnabled()) {
+      throw new HttpError(403, "演示登录已关闭，请使用 X 账号登录");
+    }
+    return {
+      name: DEMO_PROFILE.name,
+      handle: DEMO_PROFILE.handle,
+      email: "end@tiktap.demo",
+      provider: "demo",
+    };
+  });
 
   /** 真·X OAuth：返回授权地址，前端 window.location 跳过去。 */
   router.get("/api/auth/x/start", async ({ query }) => {
@@ -546,18 +782,31 @@ export function registerRoutes(router: Router, db: Db): void {
     return;
   });
 
-  /** 票据换资料，前端随后走「复用地址 / POST /api/users 建号」。 */
+  /**
+   * 票据换资料 + 服务端建号：xId 只来自刚才验证过的一次性票据，
+   * 客户端无法伪造。返回地址和会话 token，前端直接用。
+   */
   router.post("/api/auth/x/session", async ({ req }) => {
     const body = await readJson<{ ticket?: string }>(req);
     const ticket = (body.ticket ?? "").trim();
     if (!ticket) throw new HttpError(400, "缺少登录票据");
     const profile = consumeXTicket(ticket);
+
+    const created = await createUser(db, undefined, {
+      xUserId: profile.xId,
+      xHandle: profile.handle,
+      xName: profile.name,
+    });
+
     return {
       name: profile.name,
       handle: profile.handle,
       email: `${profile.handle}@x`,
       provider: "x",
       xId: profile.xId,
+      address: created.address,
+      warning: created.warning,
+      token: createSession(db, created.id, created.address),
     };
   });
 

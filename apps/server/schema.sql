@@ -3,7 +3,7 @@ PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
 -- 运行环境：dev = 本地 Anvil，testnet = X Layer 测试网，mainnet = 主网
--- 所有表都带 env，服务端按 APP_ENV 读写各自环境的数据。
+-- 业务表带 env 隔离数据；users 是全局身份，不按环境拆账号。
 
 CREATE TABLE IF NOT EXISTS meta (
   env   TEXT NOT NULL DEFAULT 'dev',
@@ -12,10 +12,9 @@ CREATE TABLE IF NOT EXISTS meta (
   PRIMARY KEY (env, key)
 );
 
--- 用户：地址与私钥都由后端生成并托管
+-- 用户：全局唯一身份，地址与私钥都由后端生成并托管
 CREATE TABLE IF NOT EXISTS users (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  env        TEXT NOT NULL DEFAULT 'dev',
   email      TEXT NOT NULL,
   address    TEXT NOT NULL,
   enc_pkey   TEXT NOT NULL,           -- AES-256-GCM，仅后端可解
@@ -24,8 +23,8 @@ CREATE TABLE IF NOT EXISTS users (
   x_name     TEXT,                    -- X 昵称（显示名，会变，登录时刷新）
   creator    TEXT,                    -- 注册来源，演示期可空
   created_at INTEGER NOT NULL,
-  UNIQUE (env, email),
-  UNIQUE (env, address)
+  UNIQUE (email),
+  UNIQUE (address)
 );
 
 -- 所有链上写操作都以这里的 tx_hash 为准，唯一键保证幂等
@@ -154,3 +153,35 @@ CREATE TABLE IF NOT EXISTS opinions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_opinions_env_market ON opinions(env, market_id, created_at);
+
+-- 关注关系：身份是全局的，不按 env 拆分
+CREATE TABLE IF NOT EXISTS follows (
+  follower_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  following_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at   INTEGER NOT NULL,
+  PRIMARY KEY (follower_id, following_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_follows_following ON follows(following_id);
+
+-- 自选市场：按账号存库，跨环境共用（symbol 全局一致）
+CREATE TABLE IF NOT EXISTS watchlist (
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  symbol     TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, symbol)
+);
+
+CREATE INDEX IF NOT EXISTS idx_watchlist_user ON watchlist(user_id, created_at);
+
+-- 登录会话：建号/登录成功后签发的 Bearer token（只存哈希，泄露库也拿不到明文）
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  address    TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+

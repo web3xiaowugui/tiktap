@@ -3,6 +3,7 @@ import { currentEnv } from "./runtime.ts";
 import type { MarketRow } from "./markets.ts";
 import type { MarketOpinion } from "../../../packages/shared/src/api-types.ts";
 import { displayName, formatAmount, gradientFor, relativeTime } from "./activity.ts";
+import { followingIds } from "./follows.ts";
 import { HttpError } from "./http.ts";
 
 /**
@@ -17,6 +18,7 @@ const lastPost = new Map<string, number>();
 
 interface OpinionRow {
   id: number;
+  user_id: number;
   address: string;
   symbol: string;
   market_id: number;
@@ -32,10 +34,10 @@ interface OpinionRow {
 }
 
 const SELECT_COLUMNS =
-  "o.id, o.address, o.symbol, o.market_id, o.bet_token, o.body, o.side, o.round_id, " +
+  "o.id, o.user_id, o.address, o.symbol, o.market_id, o.bet_token, o.body, o.side, o.round_id, " +
   "o.bet_amount_wei, o.bet_count, o.created_at, u.x_name, u.x_handle";
 
-function toOpinion(row: OpinionRow): MarketOpinion {
+function toOpinion(row: OpinionRow, followed = false): MarketOpinion {
   const amountWei = row.bet_amount_wei;
   const betAmount =
     amountWei && amountWei !== "0"
@@ -58,7 +60,7 @@ function toOpinion(row: OpinionRow): MarketOpinion {
     betToken: row.bet_token,
     betAmount,
     time: relativeTime(row.created_at),
-    followed: false,
+    followed,
   };
 }
 
@@ -66,6 +68,7 @@ export function readOpinions(
   db: Db,
   marketRow: MarketRow,
   limit = 50,
+  viewerId: number | null = null,
 ): MarketOpinion[] {
   const rows = db
     .prepare(
@@ -78,7 +81,8 @@ export function readOpinions(
       Math.min(Math.max(limit, 1), 200),
     ) as unknown as OpinionRow[];
 
-  return rows.map(toOpinion);
+  const followed = viewerId === null ? new Set<number>() : new Set(followingIds(db, viewerId));
+  return rows.map((row) => toOpinion(row, followed.has(row.user_id)));
 }
 
 /** 跨下注代币：某个标的的全部观点（左侧动态用）。 */
@@ -98,7 +102,34 @@ export function readOpinionsBySymbol(
       Math.min(Math.max(limit, 1), 200),
     ) as unknown as OpinionRow[];
 
-  return rows.map(toOpinion);
+  return rows.map((row) => toOpinion(row));
+}
+
+/**
+ * 我关注的人的观点（跨标的、跨环境）。
+ * 关注关系是全局身份，所以已关注流不按 env 过滤：
+ * 对方在另一个环境发的动态也能看到，避免「关注了却不出现」。
+ */
+export function readFollowingOpinions(
+  db: Db,
+  address: string,
+  limit = 50,
+): MarketOpinion[] {
+  const rows = db
+    .prepare(
+      `SELECT ${SELECT_COLUMNS} FROM opinions o ` +
+        "LEFT JOIN users u ON u.id = o.user_id " +
+        "JOIN follows f ON f.following_id = o.user_id " +
+        "JOIN users me ON me.id = f.follower_id " +
+        "WHERE LOWER(me.address) = LOWER(?) " +
+        "ORDER BY o.created_at DESC LIMIT ?",
+    )
+    .all(
+      address,
+      Math.min(Math.max(limit, 1), 200),
+    ) as unknown as OpinionRow[];
+
+  return rows.map((row) => toOpinion(row, true));
 }
 
 interface PositionSnapshot {
@@ -205,8 +236,8 @@ export function createOpinion(
   input: { address: string; body: string; side?: string | null; roundId?: number | null },
 ): MarketOpinion {
   const user = db
-    .prepare("SELECT id, address, x_name, x_handle FROM users WHERE env = ? AND LOWER(address) = LOWER(?)")
-    .get(currentEnv(), input.address) as
+    .prepare("SELECT id, address, x_name, x_handle FROM users WHERE LOWER(address) = LOWER(?)")
+    .get(input.address) as
     | { id: number; address: string; x_name: string | null; x_handle: string | null }
     | undefined;
   if (!user) throw new HttpError(404, `用户不存在：${input.address}，先登录`);

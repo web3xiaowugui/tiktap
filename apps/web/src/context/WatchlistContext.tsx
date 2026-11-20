@@ -5,11 +5,15 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
+import { getWatchlist, setWatchlist } from "@/api";
+import { useAuth } from "./AuthContext";
+import { useToast } from "./ToastContext";
 
-const STORAGE_KEY = "fomo.watchlist.v1";
-const DEFAULTS = ["BTC", "ETH", "SOL"];
+/** 旧版存在浏览器里的自选，只用于登录后一次性迁移进数据库。 */
+const LEGACY_KEY = "fomo.watchlist.v2";
 
 interface WatchlistContextValue {
   symbols: string[];
@@ -19,39 +23,90 @@ interface WatchlistContextValue {
 
 const WatchlistContext = createContext<WatchlistContextValue | null>(null);
 
-function readInitial(): string[] {
+function readLegacy(): string[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) {
-        return parsed;
-      }
+    const raw = localStorage.getItem(LEGACY_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) {
+      return parsed;
     }
   } catch {
     // ignore
   }
-  return DEFAULTS;
+  return [];
 }
 
+/** 自选存后端数据库（按账号、跨环境共用），不再是浏览器本地。 */
 export function WatchlistProvider({ children }: { children: ReactNode }) {
-  const [symbols, setSymbols] = useState<string[]>(readInitial);
+  const { user } = useAuth();
+  const { push } = useToast();
+  const [symbols, setSymbols] = useState<string[]>([]);
+  const address = user?.address ?? null;
+  const addressRef = useRef(address);
+  addressRef.current = address;
 
+  // 登录 / 切账号时从库里读；旧的本地自选一次性合并进来，然后删掉本地 key
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(symbols));
-    } catch {
-      // non-fatal
+    let alive = true;
+    if (!address) {
+      setSymbols([]);
+      return () => {
+        alive = false;
+      };
     }
-  }, [symbols]);
 
-  const toggle = useCallback((symbol: string) => {
-    setSymbols((current) =>
-      current.includes(symbol)
-        ? current.filter((item) => item !== symbol)
-        : [...current, symbol],
-    );
-  }, []);
+    const legacy = readLegacy();
+    getWatchlist(address)
+      .then(({ symbols: stored }) => {
+        if (!alive) return;
+        const missing = legacy.filter((symbol) => !stored.includes(symbol));
+        if (missing.length === 0) {
+          localStorage.removeItem(LEGACY_KEY);
+          setSymbols(stored);
+          return;
+        }
+        Promise.all(missing.map((symbol) => setWatchlist(address, symbol, true)))
+          .then((results) => {
+            if (!alive) return;
+            localStorage.removeItem(LEGACY_KEY);
+            setSymbols(results[results.length - 1].symbols);
+          })
+          .catch(() => {
+            if (alive) setSymbols(stored);
+          });
+      })
+      .catch(() => {
+        if (alive) setSymbols([]);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [address]);
+
+  const toggle = useCallback(
+    (symbol: string) => {
+      if (!address) {
+        push("登录后可以收藏市场", "error");
+        return;
+      }
+      const watched = symbols.includes(symbol);
+      const optimistic = watched
+        ? symbols.filter((item) => item !== symbol)
+        : [...symbols, symbol];
+      setSymbols(optimistic);
+      setWatchlist(address, symbol, !watched)
+        .then((result) => {
+          if (addressRef.current === address) setSymbols(result.symbols);
+        })
+        .catch(() => {
+          setSymbols(symbols);
+          push("收藏失败，请重试", "error");
+        });
+    },
+    [address, push, symbols],
+  );
 
   const value = useMemo(
     () => ({

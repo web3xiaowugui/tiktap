@@ -68,6 +68,7 @@ interface BetRow {
   side: number;
   amount_wei: string;
   bet_token: string;
+  round_id: number;
   created_at: number;
   tx_hash: string;
   x_name: string | null;
@@ -102,19 +103,19 @@ function parsePayload(payload: string | null): Payload {
 export function readMarketActivity(
   db: Db,
   marketRow: MarketRow,
-  roundIndex: number,
+  _roundIndex?: number,
 ): MarketActivity[] {
   const entries: Array<{ at: number; item: MarketActivity }> = [];
 
   const bets = db
     .prepare(
-      "SELECT b.address, b.side, b.amount_wei, b.bet_token, b.created_at, b.tx_hash, " +
+      "SELECT b.address, b.side, b.amount_wei, b.bet_token, b.round_id, b.created_at, b.tx_hash, " +
         "u.x_name, u.x_handle " +
         "FROM bets b LEFT JOIN users u ON u.id = b.user_id " +
-        "WHERE b.env = ? AND b.market_id = ? AND b.round_id = ? " +
-        "ORDER BY b.created_at DESC LIMIT 100",
+        "WHERE b.env = ? AND b.market_id = ? " +
+        "ORDER BY b.created_at DESC LIMIT 150",
     )
-    .all(currentEnv(), marketRow.market_id, roundIndex) as unknown as BetRow[];
+    .all(currentEnv(), marketRow.market_id) as unknown as BetRow[];
 
   for (const bet of bets) {
     entries.push({
@@ -130,6 +131,7 @@ export function readMarketActivity(
         time: relativeTime(bet.created_at),
         txHash: bet.tx_hash,
         followed: false,
+        roundIndex: bet.round_id,
       },
     });
   }
@@ -146,7 +148,7 @@ export function readMarketActivity(
   for (const tx of settleTx) {
     const payload = parsePayload(tx.payload);
     if (payload.marketId !== marketRow.market_id) continue;
-    if (payload.roundIndex !== roundIndex) continue;
+    if (typeof payload.roundIndex !== "number") continue;
     if (payload.winner === undefined) continue;
 
     const winner = Number(payload.winner);
@@ -162,6 +164,7 @@ export function readMarketActivity(
         time: relativeTime(tx.created_at),
         txHash: tx.tx_hash,
         followed: false,
+        roundIndex: payload.roundIndex,
       },
     });
   }
@@ -178,7 +181,7 @@ export function readMarketActivity(
   for (const tx of claimTx) {
     const payload = parsePayload(tx.payload);
     if (payload.marketId !== marketRow.market_id) continue;
-    if (payload.roundIndex !== roundIndex) continue;
+    if (typeof payload.roundIndex !== "number") continue;
     if (!tx.address) continue;
 
     entries.push({
@@ -200,6 +203,7 @@ export function readMarketActivity(
         time: relativeTime(tx.created_at),
         txHash: tx.tx_hash,
         followed: false,
+        roundIndex: payload.roundIndex,
       },
     });
   }

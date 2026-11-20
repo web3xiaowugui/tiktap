@@ -40,7 +40,7 @@ export function BetTokenProvider({ children }: { children: ReactNode }) {
     const wallet = walletState.data;
     if (!wallet) return base;
 
-    // 链上余额优先：mock 里的 balance 只是没有链时的占位。
+    // 链上余额优先：接口里的 balance 是 0 占位，真实余额只来自钱包接口。
     return base.map((token) => {
       const onChain = wallet.tokens.find((item) => item.symbol === token.symbol);
       return onChain ? { ...token, balance: onChain.balance } : token;
@@ -48,17 +48,23 @@ export function BetTokenProvider({ children }: { children: ReactNode }) {
   }, [data, walletState.data]);
 
   // TEST 是免费领的体验币，默认落在它上面，新号不用先找代币。
+  // 停用的代币按钮保留展示，但默认和选中都跳过它们。
+  const enabledTokens = tokens.filter((token) => !token.disabled);
   const defaultToken =
-    tokens.find((token) => token.symbol === "TEST") ??
-    tokens.find((token) => token.symbol === "OKB") ??
-    tokens[0] ??
+    enabledTokens.find((token) => token.symbol === "TEST") ??
+    enabledTokens.find((token) => token.symbol === "OKB") ??
+    enabledTokens[0] ??
     null;
   const selected =
-    tokens.find((token) => token.symbol === selectedSymbol) ?? defaultToken;
+    enabledTokens.find((token) => token.symbol === selectedSymbol) ?? defaultToken;
 
-  const selectToken = useCallback((symbol: string) => {
-    setSelectedSymbol(symbol);
-  }, []);
+  const selectToken = useCallback(
+    (symbol: string) => {
+      if (tokens.find((token) => token.symbol === symbol)?.disabled) return;
+      setSelectedSymbol(symbol);
+    },
+    [tokens],
+  );
 
   const value = useMemo(
     () => ({

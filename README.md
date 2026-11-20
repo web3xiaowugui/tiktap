@@ -32,9 +32,9 @@ curl http://127.0.0.1:8787/api/health
 ```
 
 - 运行时：Node 26 直接用类型剥离跑 `.ts`，**没有编译步骤**
-- 数据库：`node:sqlite`，单文件 `data/tiktap-auto.db`，schema 在 `apps/server/schema.sql`（启动时幂等应用）；所有表都有 `env` 字段，dev / testnet 共用同一个后端和同一个库，按请求参数 `env` 隔离
+- 数据库：`node:sqlite`，单文件 `data/tiktap-auto.db`，schema 在 `apps/server/schema.sql`（启动时幂等应用）；`users` 是全局身份（不按环境拆行），其余业务表都带 `env` 字段，dev / testnet 共用同一个后端和同一个库，按请求参数 `env` 隔离
 - 链交互：`viem`（唯一运行时依赖）
-- 表结构：`users`（地址 + 加密私钥）、`txs`（txHash 唯一键、pending/confirmed/failed）、`markets`（标的×下注代币 → marketId）、`bets`（逐笔下注/结算/领奖）、`round_prices`（每轮锁定价/开奖价）、`pools`、`rounds`、`quick_amounts`、`opinions`
+- 表结构：`users`（全局身份：地址 + 加密私钥）、`txs`（txHash 唯一键、pending/confirmed/failed）、`markets`（标的×下注代币 → marketId）、`bets`（逐笔下注/结算/领奖）、`round_prices`（每轮锁定价/开奖价）、`pools`、`rounds`、`quick_amounts`、`opinions`
 
 #### 接口一览
 
@@ -76,7 +76,7 @@ curl http://127.0.0.1:8787/api/health
 
 1. 在 https://developer.x.com 建 OAuth 2.0 应用，Client type 选 Web App / Native App，回调地址填 `http://127.0.0.1:8787/api/auth/x/callback`；
 2. `.env` 填 `X_CLIENT_ID`、`X_CLIENT_SECRET`（公开客户端可不填 Secret）、`PUBLIC_BASE_URL`、`WEB_BASE_URL`；
-3. 前端点「使用 X 账号登录」→ `GET /api/auth/x/start` → 跳 X 授权 → 回调换 token 取 `users/me` → 302 回 `WEB_BASE_URL/?x_ticket=…` → `POST /api/auth/x/session` 换资料 → 走托管建号；`users.x_user_id` 存 X 数字 id，同一个 id 永远复用同一个托管地址（改 handle 不影响）。
+3. 前端点「使用 X 账号登录」→ `GET /api/auth/x/start` → 跳 X 授权 → 回调换 token 取 `users/me` → 302 回 `WEB_BASE_URL/?x_ticket=…` → `POST /api/auth/x/session` 换资料 → 走托管建号；`users.x_user_id` 存 X 数字 id，同一个 id 永远复用同一个托管地址（改 handle 不影响），刷新页面或切换环境也一样；首次在某条链上使用会自动补该链的白名单和 gas。
 
 没配置 `X_CLIENT_ID` 时该接口返回 503 并说明缺什么；授权失败会带 `?x_error=` 回来提示。
 
@@ -106,7 +106,7 @@ POST /api/bet
 
 | 界面动作 | 实际调用 |
 | --- | --- |
-| 登录（X 账号或演示账号） | 先复用 localStorage 里的托管地址，查不到就 `POST /api/users` 建号；地址写回会话 |
+| 登录（X 账号或演示账号） | 有 X id 时后端按 id 全局复用账号（刷新、切环境都不换地址）；没有 X id 时先复用 localStorage 里的托管地址，查不到才 `POST /api/users` 建号，地址写回会话 |
 | 可用余额 / 代币列表 | `GET /api/wallet/:address` → 覆盖 `/api/bet-tokens` 里的 mock 余额 |
 | 「领币」 | `POST /api/faucet`（每地址有 mint 上限，gas 从用户地址出） |
 | Tap涨 / Tap跌 | `POST /api/bet`（`address` + URL 上的 `?symbol=` + 选中的下注代币 + 输入金额）；提交中按钮置灰，封盘后禁用并提示 |
@@ -193,6 +193,8 @@ Foundry v1.9.0 已安装（`forge` / `cast` / `anvil` / `chisel` 在 `%USERPROFI
 ## 环境变量
 
 见 `.env.example`。必须自己生成 `WALLET_ENC_KEY`（`openssl rand -hex 32`），它用于 AES-256-GCM 加密用户私钥。
+
+可选环境由 `APP_ENVS` 配置（逗号分隔，顺序就是前端下拉顺序）：本地开发用 `APP_ENVS=dev,testnet`，线上部署只想要测试网+主网时设 `APP_ENVS=testnet,mainnet`（此时 `dev` 相关变量可以不配）。前端通过 `GET /api/envs` 拉取启用的环境列表，只显示配置过的环境；只剩一个环境时下拉自动隐藏。主网配置用 `MAINNET_` 前缀（`MAINNET_RPC_URL` / `MAINNET_CHAIN_ID=196` / `MAINNET_POOL_MARKET_ADDRESS` / 代币地址等），没配 market 时链上写操作会自动跳过。切换环境是软切换，不整页刷新，数据会自动重新拉取。
 
 链上写操作还需要：`POOL_MARKET_ADDRESS` 与三个代币地址（`TEST_TOKEN_ADDRESS` / `OKB_TOKEN_ADDRESS` / `BEM_TOKEN_ADDRESS`，`pnpm contracts:deploy` 会打印）、`OPERATOR_PKEY`（只用于 `setAllowed` / `setMarket` / `settle`，不碰用户的钱）。本地演示可设 `GAS_TOPUP_WEI` 给新地址打 gas，主网应留空。自动结算默认开启，设 `AUTO_SETTLE=0` 关闭（本地用 `anvil_mine` 快进时建议关掉，改用 `/api/settle/round` 显式指定结果）。
 

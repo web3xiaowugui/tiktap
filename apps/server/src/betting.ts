@@ -1,8 +1,8 @@
 import { parseUnits, type Address } from "viem";
 import { publicClientFor } from "./chain.ts";
-import { ERC20_ABI, POOL_MARKET_ABI, WOKB_ABI, sideFromLabel } from "./contracts.ts";
+import { ERC20_ABI, POOL_MARKET_ABI, TEST_TOKEN_ABI, WOKB_ABI, sideFromLabel } from "./contracts.ts";
 import { HttpError } from "./http.ts";
-import { describe, ensureUserGas } from "./users.ts";
+import { describe, ensureApprovals, ensureUserGas, ensureUserOnChain } from "./users.ts";
 import {
   markTxConfirmed,
   markTxFailed,
@@ -62,8 +62,8 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
   if (!cfg.market) throw new HttpError(503, "未配置 POOL_MARKET_ADDRESS");
 
   const user = db
-    .prepare("SELECT id, address, enc_pkey FROM users WHERE env = ? AND LOWER(address) = LOWER(?)")
-    .get(currentEnv(), input.address) as { id: number; address: Address; enc_pkey: string } | undefined;
+    .prepare("SELECT id, address, enc_pkey FROM users WHERE LOWER(address) = LOWER(?)")
+    .get(input.address) as { id: number; address: Address; enc_pkey: string } | undefined;
   if (!user) throw new HttpError(404, `用户不存在：${input.address}，先调用 POST /api/users 建号`);
 
   const marketRow = findMarket(db, input.market.toUpperCase(), input.betToken.toUpperCase());
@@ -133,7 +133,8 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
 
   const pkey = decryptPrivateKey(user.enc_pkey);
 
-  await ensureUserGas(cfg, user.address);
+  // 账号是全局身份：首次在某条链上下注时，先补该链的白名单和 gas。
+  await ensureUserOnChain(db, cfg, user.id, user.address);
 
   return withAddressLock(user.address, async () => {
     const wallet = walletFor(pkey);
@@ -325,6 +326,42 @@ export async function placeBet(db: Db, input: BetInput): Promise<BetResult> {
   });
 }
 
+/**
+ * 领取统计：只算「当前这枚 TEST」上 confirmed 的 mint 记录。
+ * 新版 TEST 不限量，这个数字只用于弹框展示「累计已领」。
+ */
+export function readMintedAmount(
+  db: Db,
+  userId: number,
+  tokenAddress?: string,
+): number {
+  const rows = db
+    .prepare(
+      "SELECT payload FROM txs WHERE env = ? AND user_id = ? AND kind = 'mint' AND status = 'confirmed'",
+    )
+    .all(currentEnv(), userId) as Array<{ payload: string | null }>;
+
+  let claimedWei = 0n;
+  for (const row of rows) {
+    try {
+      const payload = JSON.parse(row.payload ?? "{}") as { amountWei?: string; token?: string };
+      if (!payload.amountWei) continue;
+      if (
+        tokenAddress &&
+        payload.token &&
+        payload.token.toLowerCase() !== tokenAddress.toLowerCase()
+      ) {
+        continue;
+      }
+      claimedWei += BigInt(payload.amountWei);
+    } catch {
+      // 忽略坏掉的 payload
+    }
+  }
+
+  return Number(claimedWei / 10n ** 18n);
+}
+
 /** 领体验币：只允许 TEST，用用户自己的地址发 mint。 */
 export async function mintForUser(
   db: Db,
@@ -338,8 +375,8 @@ export async function mintForUser(
   }
 
   const user = db
-    .prepare("SELECT id, address, enc_pkey FROM users WHERE env = ? AND LOWER(address) = LOWER(?)")
-    .get(currentEnv(), address) as { id: number; address: Address; enc_pkey: string } | undefined;
+    .prepare("SELECT id, address, enc_pkey FROM users WHERE LOWER(address) = LOWER(?)")
+    .get(address) as { id: number; address: Address; enc_pkey: string } | undefined;
   if (!user) throw new HttpError(404, `用户不存在：${address}`);
 
   const tokenRow = db
@@ -357,17 +394,29 @@ export async function mintForUser(
     throw new HttpError(400, `金额格式错误：${amount}`);
   }
 
-  const pkey = decryptPrivateKey(user.enc_pkey);
+  // 新版 TEST 只有 operator（minter）能铸，而且可以铸给任意地址，
+  // 所以这里用 operator 签名，不再用用户自己的钱包发交易。
+  if (!cfg.operatorPkey) throw new HttpError(503, "未配置 OPERATOR_PKEY");
+  const minterPkey = cfg.operatorPkey;
 
   await ensureUserGas(cfg, user.address);
 
-  return withAddressLock(user.address, async () => {
-    const wallet = walletFor(pkey);
-    const hash = await wallet.writeContract({
+  const minted = await withAddressLock(user.address, async () => {
+    const wallet = walletFor(minterPkey);
+
+    // 先记下领之前的余额，领完确认链上真的加上了再返回
+    const beforeBalance = (await publicClientFor().readContract({
       address: tokenAddress,
       abi: ERC20_ABI,
+      functionName: "balanceOf",
+      args: [user.address],
+    })) as bigint;
+
+    const hash = await wallet.writeContract({
+      address: tokenAddress,
+      abi: TEST_TOKEN_ABI,
       functionName: "mint",
-      args: [amountWei],
+      args: [user.address, amountWei],
       chain: wallet.chain,
       account: wallet.account!,
     });
@@ -385,6 +434,30 @@ export async function mintForUser(
       throw new HttpError(502, "领取交易回滚");
     }
     markTxConfirmed(db, txId);
+
+    // 公共 RPC 的 eth_call 状态可能慢 receipt 一两秒：轮询到余额可见再返回，
+    // 前端领完立刻刷新就不会拿到旧余额。
+    const expected = beforeBalance + amountWei;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const current = (await publicClientFor().readContract({
+        address: tokenAddress,
+        abi: ERC20_ABI,
+        functionName: "balanceOf",
+        args: [user.address],
+      })) as bigint;
+      if (current >= expected) break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
     return { txHash: hash, amountWei: amountWei.toString() };
   });
+
+  // 领币后顺手把这条链所有下注代币的额度开好，下注路径就不用再 approve。
+  try {
+    await ensureApprovals(db, cfg, user.id, user.address, user.enc_pkey);
+  } catch (error) {
+    console.warn("[faucet] 自动授权失败：", describe(error));
+  }
+
+  return minted;
 }

@@ -37,3 +37,8 @@ Thumbs.db
 *.tmp
 *.tmpdir/
 shots/tmp/
+
+# generated media (intro videos, posters)
+media/
+# 生产环境配置（含密钥，不入库）
+deploy/env.production

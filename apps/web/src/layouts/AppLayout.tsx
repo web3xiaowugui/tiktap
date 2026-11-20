@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { SidebarResizeHandle } from "@/components/SidebarResizeHandle";
-import { TickerBar } from "@/components/TickerBar";
 import { TokenSidebar } from "@/components/TokenSidebar";
 import { TopBar } from "@/components/TopBar";
 import { TradePanel } from "@/components/TradePanel";
@@ -65,7 +64,6 @@ export default function AppLayout() {
           {/* 个人主页不需要右侧交易/转账栏，内容区占满 */}
           {!isProfile && <TradePanel />}
         </div>
-        <TickerBar />
       </div>
       </BetTokenProvider>
     </ChainClockProvider>

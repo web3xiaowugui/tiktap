@@ -1,6 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { LogOut, Search, Settings, Trophy, User } from "lucide-react";
+import { LogOut, Search, User } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { EnvironmentSelect } from "@/components/EnvironmentSelect";
 import { FaucetButton } from "@/components/FaucetButton";
@@ -9,7 +9,6 @@ import { SearchDialog, useSearchHotkey } from "@/components/SearchDialog";
 import { TokenIcon } from "@/components/TokenIcon";
 import { useAuth } from "@/context/AuthContext";
 import { useBetToken } from "@/context/BetTokenContext";
-import { useToast } from "@/context/ToastContext";
 import { cn } from "@/lib/cn";
 import { fmtTokenAmount, shortAddress } from "@/lib/format";
 import { orderBalanceTokens } from "@/lib/tokenOrder";
@@ -21,7 +20,6 @@ export function TopBar() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const { tokens, nativeBalance } = useBetToken();
-  const { push } = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -154,22 +152,6 @@ export function TopBar() {
                   onClick={() => {
                     setMenuOpen(false);
                     navigate(`/u/${user?.address ?? user?.handle ?? "end837"}`);
-                  }}
-                />
-                <MenuItem
-                  icon={<Trophy className="h-3.5 w-3.5" />}
-                  label="排行榜"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    push("排行榜将在裁剪版的下一次迭代中开放");
-                  }}
-                />
-                <MenuItem
-                  icon={<Settings className="h-3.5 w-3.5" />}
-                  label="设置"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    push("演示环境：设置页暂未开放");
                   }}
                 />
               </div>

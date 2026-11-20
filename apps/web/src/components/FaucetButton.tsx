@@ -1,17 +1,18 @@
 import { useEffect, useState } from "react";
 import { Coins, Loader2, X } from "lucide-react";
-import { faucet } from "@/api";
+import { faucet, getFaucetStatus } from "@/api";
 import { useAuth } from "@/context/AuthContext";
 import { useBetToken } from "@/context/BetTokenContext";
 import { useToast } from "@/context/ToastContext";
-import { ENVIRONMENT_LABELS, readEnvironment } from "@/lib/environment";
+import { environmentLabel, useEnvironment } from "@/lib/environment";
 
-const CLAIM_AMOUNT = 100;
+const CLAIM_AMOUNT = 1000;
 const FAUCET_SYMBOL = "TEST";
 
 /**
  * 顶栏「领测试币」：只发 TEST，不跟随当前下注代币。
  * 点开弹框展示本次可领数量，确认后调 /api/faucet，领完刷新余额。
+ * 是否到上限以数据库 mint 记录为准（余额会因为下注/转账变化，不可靠）。
  */
 export function FaucetButton() {
   const { user } = useAuth();
@@ -21,20 +22,28 @@ export function FaucetButton() {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ claimed: number } | null>(null);
 
   const symbol = FAUCET_SYMBOL;
   const balance = tokens.find((token) => token.symbol === FAUCET_SYMBOL)?.balance;
-  const environment = readEnvironment();
+  const environment = useEnvironment();
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !user?.address) return;
     setError(null);
+    setStatus(null);
+    getFaucetStatus(user.address)
+      .then(setStatus)
+      .catch(() => setStatus(null));
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !pending) setOpen(false);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, pending]);
+  }, [open, pending, user?.address]);
+
+  // 主网没有「测试币」概念，直接不显示入口
+  if (environment === "mainnet") return null;
 
   const claim = async () => {
     if (!user?.address || pending) return;
@@ -42,13 +51,14 @@ export function FaucetButton() {
     setError(null);
 
     try {
-      await faucet({
+      const result = await faucet({
         address: user.address,
         betToken: symbol,
         amount: String(CLAIM_AMOUNT),
       });
+      const claimed = Number(result.amountWei) / 1e18;
       reloadBalances();
-      push(`已领取 ${CLAIM_AMOUNT} ${symbol}`, "success");
+      push(`已领取 ${claimed} ${symbol}`, "success");
       setOpen(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "领取失败，请重试");
@@ -89,10 +99,7 @@ export function FaucetButton() {
 
             <h2 className="text-[16px] font-semibold text-white">领取测试币</h2>
             <p className="mt-1 text-[11px] leading-relaxed text-muted">
-              当前环境：<span className="text-white">{ENVIRONMENT_LABELS[environment]}</span>。
-              {environment === "testnet"
-                ? "领取记录写入同一个库的 testnet 环境。"
-                : "领取记录写入同一个库的 dev 环境。"}
+              当前环境：<span className="text-white">{environmentLabel(environment)}</span>。
             </p>
 
             <div className="mt-5 rounded-xl border border-line bg-[#0a0a0c] px-4 py-5 text-center">
@@ -108,6 +115,11 @@ export function FaucetButton() {
               {typeof balance === "number" && (
                 <div className="mt-2 text-[10.5px] text-muted2">
                   当前余额 {balance.toLocaleString()} {symbol}
+                </div>
+              )}
+              {status && (
+                <div className="mt-1 text-[10.5px] text-muted2">
+                  累计已领 {status.claimed} TEST
                 </div>
               )}
             </div>

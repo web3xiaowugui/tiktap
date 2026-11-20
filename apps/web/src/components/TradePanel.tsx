@@ -9,6 +9,9 @@ import { cn } from "@/lib/cn";
 import { useChainClock } from "@/lib/chainClock";
 import { fmtQty, fmtUsd } from "@/lib/format";
 
+/** 下注金额默认 100，而且输入框始终保留一个有效值。 */
+const DEFAULT_BET_AMOUNT = "100";
+
 export function TradePanel() {
   const { selected: selectedBetToken, reloadBalances } = useBetToken();
   const { push } = useToast();
@@ -46,11 +49,13 @@ export function TradePanel() {
         amount: raw,
       });
       push(`已下单：${side === "long" ? "Tap涨" : "Tap跌"} ${raw} ${selectedBetToken.symbol}`, "success");
-      setAmount("");
+      setAmount(DEFAULT_BET_AMOUNT);
       setPercent(0);
       reloadBalances();
       // 让发现页的活动列表立刻拉一次（市场级活动流）
       window.dispatchEvent(new Event("tiktap:activity-refresh"));
+      // 池子 / 我的下注用单独的刷新事件，避免它们跟活动列表耦合
+      window.dispatchEvent(new Event("tiktap:bet-refresh"));
       clock.refresh();
     } catch (error) {
       push(error instanceof Error ? error.message : "下注失败", "error");
@@ -63,8 +68,8 @@ export function TradePanel() {
     if (!selectedBetToken || !user?.address) return;
     setFunding(true);
     try {
-      await faucet({ address: user.address, betToken: selectedBetToken.symbol, amount: "100" });
-      push(`已领取 100 ${selectedBetToken.symbol}`, "success");
+      await faucet({ address: user.address, betToken: selectedBetToken.symbol, amount: "1000" });
+      push(`已领取 1000 ${selectedBetToken.symbol}`, "success");
       reloadBalances();
     } catch (error) {
       push(error instanceof Error ? error.message : "领取失败", "error");
@@ -73,7 +78,7 @@ export function TradePanel() {
     }
   };
 
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] = useState(DEFAULT_BET_AMOUNT);
   const [percent, setPercent] = useState(0);
   const [quickAmounts, setQuickAmounts] = useState<number[]>([]);
   const [quickAmountsLoading, setQuickAmountsLoading] = useState(true);
@@ -89,7 +94,7 @@ export function TradePanel() {
   const selectedBetTokenBalance = selectedBetToken?.balance ?? 0;
 
   useEffect(() => {
-    setAmount("");
+    setAmount(DEFAULT_BET_AMOUNT);
     setPercent(0);
   }, [selectedBetTokenSymbol]);
 
@@ -130,11 +135,16 @@ export function TradePanel() {
     );
   };
 
+  /** 失焦时如果被清空或填了 0，自动补回默认值，保证输入框始终有有效金额。 */
+  const handleAmountBlur = () => {
+    if (!amount.trim() || Number(amount) <= 0) handleAmount(DEFAULT_BET_AMOUNT);
+  };
+
   const handlePercent = (next: number) => {
     setPercent(next);
     setAmount(
       next === 0
-        ? ""
+        ? DEFAULT_BET_AMOUNT
         : ((next / 100) * selectedBetTokenBalance).toFixed(4),
     );
   };
@@ -194,7 +204,7 @@ export function TradePanel() {
               type="button"
               onClick={() => void requestTokens()}
               disabled={funding || !user?.address}
-              title={`领 100 ${selectedBetToken?.symbol ?? "代币"}`}
+              title={`领 1000 ${selectedBetToken?.symbol ?? "代币"}`}
               className="rounded border border-line px-1.5 py-0.5 text-[11px] font-bold text-muted2 transition hover:border-line2 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
             >
               {funding ? "领取中…" : "领币"}
@@ -210,7 +220,8 @@ export function TradePanel() {
             inputMode="decimal"
             value={amount}
             onChange={(event) => handleAmount(event.target.value)}
-            placeholder="0"
+            onBlur={handleAmountBlur}
+            placeholder="100"
             className="num min-w-0 flex-1 bg-transparent text-[28px] font-medium leading-[40px] tracking-[0.02em] text-white outline-none placeholder:text-muted2"
             aria-label={`下注数量（${selectedBetToken?.symbol ?? "代币"}）`}
           />

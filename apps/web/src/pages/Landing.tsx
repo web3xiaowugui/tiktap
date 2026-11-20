@@ -1,18 +1,20 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowUpRight, ChevronRight, Globe2 } from "lucide-react";
-import { getTokens } from "@/api";
-import type { Token } from "@/api/types";
+import {
+  ArrowLeftRight,
+  ArrowUpRight,
+  AtSign,
+  ChevronDown,
+  Coins,
+  LogIn,
+  MessageSquare,
+  Star,
+  Trophy,
+} from "lucide-react";
 import { AuthModal } from "@/components/AuthModal";
 import { Logo } from "@/components/Logo";
-import { TokenIcon } from "@/components/TokenIcon";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
-import { cn } from "@/lib/cn";
-import { fmtPct, fmtPrice } from "@/lib/format";
-import { useApi } from "@/lib/useApi";
-
-const PREVIEW_TOKENS = ["BTC", "ETH", "SOL", "HYPE"];
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -20,7 +22,6 @@ export default function Landing() {
   const { push } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [authOpen, setAuthOpen] = useState(searchParams.get("login") === "1");
-  const { data: tokens } = useApi(getTokens, []);
 
   /**
    * X 授权回跳：地址栏带 ?x_ticket=... 时换资料 → 建/复用托管账户 → 进发现页。
@@ -75,12 +76,12 @@ export default function Landing() {
       <LandingNav
         onLogin={openAuth}
         onStart={start}
-        onToast={push}
       />
 
-      <Hero onStart={start} onDownload={() => push("演示项目仅包含网页版，移动端未包含")} />
-      <ProductSection onStart={start} tokens={tokens ?? []} />
-      <SocialProof onStart={start} />
+      <Hero onStart={start} />
+      <HowTo />
+      <HackathonBanner />
+      <SocialProof />
 
       <Footer onToast={push} />
 
@@ -92,11 +93,9 @@ export default function Landing() {
 function LandingNav({
   onLogin,
   onStart,
-  onToast,
 }: {
   onLogin: () => void;
   onStart: () => void;
-  onToast: (message: string) => void;
 }) {
   const { user, finishXLogin } = useAuth();
 
@@ -107,41 +106,22 @@ function LandingNav({
           <Logo size="md" className="text-[24px]" />
         </button>
 
-        <nav className="hidden items-center gap-6 text-[11.5px] text-white/55 lg:flex">
-          {["博客", "学习", "解答", "价格"].map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => {
-                if (item === "学习") {
-                  document.getElementById("product")?.scrollIntoView({ behavior: "smooth" });
-                } else {
-                  onToast(`演示项目暂未包含「${item}」页面`);
-                }
-              }}
-              className="transition hover:text-white"
-            >
-              {item}
-            </button>
-          ))}
-        </nav>
-
         <div className="ml-auto flex items-center gap-2.5">
 
           {user ? (
             <button
               type="button"
               onClick={onStart}
-              className="flex h-8 items-center gap-1.5 rounded-md bg-white px-3 text-[11px] font-medium text-black transition hover:bg-white/90"
+              className="flex h-9 items-center gap-1.5 rounded-md bg-white px-4 text-[13px] font-medium text-black transition hover:bg-white/90"
             >
               进入应用
-              <ArrowUpRight className="h-3.5 w-3.5" />
+              <ArrowUpRight className="h-4 w-4" />
             </button>
           ) : (
             <button
               type="button"
               onClick={onLogin}
-              className="h-8 rounded-md border border-line2 bg-white/[0.04] px-4 text-[11px] text-white/85 backdrop-blur transition hover:border-white/25 hover:bg-white/[0.08] hover:text-white"
+              className="h-9 rounded-md border border-line2 bg-white/[0.04] px-5 text-[13px] text-white/85 backdrop-blur transition hover:border-white/25 hover:bg-white/[0.08] hover:text-white"
             >
               登录
             </button>
@@ -152,15 +132,9 @@ function LandingNav({
   );
 }
 
-function Hero({
-  onStart,
-  onDownload,
-}: {
-  onStart: () => void;
-  onDownload: () => void;
-}) {
+function Hero({ onStart }: { onStart: () => void }) {
   return (
-    <section className="relative isolate min-h-[880px] overflow-hidden pt-[132px]">
+    <section className="relative isolate min-h-[860px] overflow-hidden pt-[150px]">
       <StarField />
 
       <div
@@ -186,45 +160,38 @@ function Hero({
 
       <div className="relative z-10 mx-auto flex max-w-[1100px] flex-col items-center px-5 text-center">
         <span
-          className="select-none text-[clamp(80px,9vw,132px)] font-extrabold leading-none tracking-[-0.065em] text-white"
+          className="select-none text-center text-[clamp(32px,8.5vw,112px)] font-extrabold leading-none tracking-[-0.04em] text-white"
           style={{ textShadow: "0 0 80px rgba(120,100,255,0.28)" }}
         >
-          TikTap
+          Tik · Tap · Win.
         </span>
-
-        <h1 className="text-balance mt-1 text-[clamp(22px,2.4vw,32px)] font-semibold tracking-tight text-white">
-          每一位交易者都是传奇的开始
-        </h1>
-        <p className="mt-2.5 max-w-[520px] text-balance text-[12.5px] leading-relaxed text-white/50">
-          从迷因币到热门代币，几秒内即可交易任意加密货币。
+        <p className="mt-5 text-[clamp(15px,1.3vw,17px)] font-medium tracking-[0.04em] text-white/45">
+          行情、下注、开奖，一条信息流搞定。
         </p>
 
-        <div className="mt-7 flex items-center gap-2.5">
+        <div className="mt-8 flex items-center gap-2.5">
           <button
             type="button"
             onClick={onStart}
-            className="group relative h-10 overflow-hidden rounded-md bg-brand px-7 text-[12px] font-medium text-white shadow-[0_12px_40px_rgba(111,92,245,0.35)] transition hover:bg-brand/90"
+            className="group relative h-11 overflow-hidden rounded-md bg-brand px-8 text-[14px] font-medium text-white shadow-[0_12px_40px_rgba(111,92,245,0.35)] transition hover:bg-brand/90"
           >
             <span className="relative z-10">开始交易</span>
             <span className="absolute inset-0 bg-[linear-gradient(110deg,transparent,rgba(255,255,255,0.25),transparent)] opacity-0 transition group-hover:opacity-100" />
           </button>
-          <button
-            type="button"
-            onClick={onDownload}
-            className="h-10 rounded-md border border-white/15 bg-white/[0.04] px-7 text-[12px] text-white/75 backdrop-blur transition hover:border-white/30 hover:bg-white/[0.08] hover:text-white"
-          >
-            下载应用
-          </button>
         </div>
-
-        <div className="mt-4 flex items-center gap-2 text-[9px] text-white/30">
-          <span className="h-1 w-1 rounded-full bg-up" />
-          网页版已上线 · 无需下载
-        </div>
+        <p className="mt-3 text-[11px] text-white/30">不用钱包 · 领 1000 TEST 就能玩</p>
       </div>
 
       <Satellite />
       <Astronaut />
+
+      <a
+        href="#howto"
+        className="absolute bottom-7 right-8 z-20 hidden flex-col items-center gap-1 text-[10px] tracking-[0.16em] text-white/30 transition hover:text-white/70 sm:flex"
+      >
+        六步上手
+        <ChevronDown className="h-4 w-4 animate-bounce" />
+      </a>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-ink via-ink/80 to-transparent" />
     </section>
@@ -403,186 +370,80 @@ function Satellite() {
   );
 }
 
-function ProductSection({ onStart, tokens }: { onStart: () => void; tokens: Token[] }) {
+
+const GUIDE_STEPS = [
+  {
+    title: "登录即开户",
+    body: "演示登录或 X 授权，后端立刻生成托管钱包并加密存库——不用助记词、不用装钱包插件。",
+    icon: LogIn,
+  },
+  {
+    title: "领测试币",
+    body: "顶栏点「领测试币」，每次领 1000 TEST；链上到账后右上角余额自动刷新，直接能下注。",
+    icon: Coins,
+  },
+  {
+    title: "选市场下注",
+    body: "发现页选标的物和轮次，买涨或买跌，链成功才记仓。",
+    icon: ArrowLeftRight,
+  },
+  {
+    title: "等开奖看收益",
+    body: "每轮自动开奖、盈利自动领取；持仓、历史轮次和分代币盈亏都在个人主页能查到。",
+    icon: Trophy,
+  },
+  {
+    title: "发观点",
+    body: "发布本轮观点，关注看好的交易者；「已关注」只筛你关注的人，排行榜也有已关注视图。",
+    icon: MessageSquare,
+  },
+  {
+    title: "收藏自选",
+    body: "市场页点星标加入自选；自选按账号存在数据库里，换浏览器登录同一账号还在。",
+    icon: Star,
+  },
+];
+
+function HowTo() {
   return (
-    <section id="product" className="relative overflow-hidden px-5 py-24 sm:py-32">
-      <div className="pointer-events-none absolute left-1/2 top-0 h-[420px] w-[760px] -translate-x-1/2 rounded-full bg-brand/[0.09] blur-[120px]" />
+    <section id="howto" className="relative overflow-hidden border-t border-white/[0.06] px-5 py-24 sm:px-8">
+      <div className="pointer-events-none absolute left-1/2 top-0 h-[320px] w-[720px] -translate-x-1/2 rounded-full bg-brand/[0.07] blur-[120px]" />
 
-      <div className="relative mx-auto max-w-[1000px] text-center">
-        <span className="text-[10px] font-medium tracking-[0.22em] text-brand2">网页版现已上线</span>
-        <h2 className="text-balance mt-3 text-[clamp(30px,4vw,46px)] font-semibold leading-[1.12] tracking-tight text-white">
-          随时随地交易。
-          <br />
-          时刻紧跟市场。
-        </h2>
-        <p className="mx-auto mt-4 max-w-[440px] text-[12.5px] leading-relaxed text-white/45">
-          在手机上升仓，在电脑上平仓——一款应用全部搞定。实时行情、跟单动态与持仓管理，都在同一个界面里。
-        </p>
-
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[9.5px] text-white/35">
-          <span className="flex items-center gap-1.5">
-            <Globe2 className="h-3 w-3" /> 6 条链
+      <div className="relative mx-auto max-w-[1000px]">
+        <div className="text-center">
+          <span className="text-[11px] font-medium uppercase tracking-[0.22em] text-brand2">
+            使用说明
           </span>
-          <span className="h-3 w-px bg-white/10" />
-          <span>0 门槛 · 无助记词</span>
-          <span className="h-3 w-px bg-white/10" />
-          <span>7 × 24 小时行情</span>
+          <h2 className="mt-3 text-[clamp(28px,3.6vw,40px)] font-semibold tracking-tight text-white">
+            六步上手 TikTap
+          </h2>
+          <p className="mx-auto mt-3 max-w-[500px] text-[14px] leading-relaxed text-white/45">
+            全程跑在 X Layer 测试网，TEST币没有真实价值；不需要助记词，也不需要钱包插件。
+          </p>
         </div>
 
-        <AppPreview tokens={tokens} />
-
-        <button
-          type="button"
-          onClick={onStart}
-          className="mt-7 inline-flex items-center gap-1 text-[11px] text-white/55 transition hover:text-white"
-        >
-          打开网页版终端
-          <ChevronRight className="h-3.5 w-3.5" />
-        </button>
+        <ol className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {GUIDE_STEPS.map((step, index) => {
+            const Icon = step.icon;
+            return (
+              <li
+                key={step.title}
+                className="group relative rounded-xl border border-white/[0.08] bg-white/[0.03] p-5 transition hover:border-brand/35 hover:bg-white/[0.05]"
+              >
+                <span className="num absolute right-4 top-4 text-[10px] tracking-[0.16em] text-white/25">
+                  0{index + 1}
+                </span>
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand/10 ring-1 ring-brand/25">
+                  <Icon className="h-4 w-4 text-brand2" />
+                </div>
+                <h3 className="mt-3.5 text-[15px] font-semibold text-white">{step.title}</h3>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-white/45">{step.body}</p>
+              </li>
+            );
+          })}
+        </ol>
       </div>
     </section>
-  );
-}
-
-function AppPreview({ tokens }: { tokens: Token[] }) {
-  const preview = PREVIEW_TOKENS.map((symbol) => tokens.find((token) => token.symbol === symbol)).filter(
-    (token): token is Token => Boolean(token),
-  );
-  const btc = preview[0];
-
-  if (!btc) {
-    return <div className="mx-auto mt-11 h-[320px] w-full max-w-[900px] skeleton rounded-xl" />;
-  }
-
-  return (
-    <div className="relative mx-auto mt-11 w-full max-w-[900px]">
-      <div className="pointer-events-none absolute -inset-x-16 -top-6 h-24 bg-brand/15 blur-[70px]" />
-      <div className="relative overflow-hidden rounded-xl border border-white/10 bg-[#0d0d11] text-left shadow-[0_50px_150px_rgba(0,0,0,0.75)]">
-        <div className="flex h-8 items-center gap-1.5 border-b border-line px-3">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#ff5f57]/80" />
-          <span className="h-1.5 w-1.5 rounded-full bg-[#febc2e]/80" />
-          <span className="h-1.5 w-1.5 rounded-full bg-[#28c840]/80" />
-          <div className="mx-auto flex items-center gap-1 rounded bg-panel px-10 py-0.5 text-[7.5px] text-muted2">
-            <span className="h-1.5 w-1.5 rounded-full bg-up/70" />
-            tiktap.family/discover
-          </div>
-          <div className="w-10" />
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-[155px_minmax(0,1fr)_170px]">
-          <div className="hidden border-r border-line p-1.5 sm:block">
-            <div className="flex gap-2 px-1 pb-1.5 text-[6.5px] text-muted2">
-              <span className="text-white">代币</span>
-              <span>永续</span>
-              <span>排行</span>
-            </div>
-            {preview.map((token, index) => (
-              <div
-                key={token.symbol}
-                className={cn(
-                  "flex items-center gap-1.5 rounded px-1 py-[5px]",
-                  index === 0 && "bg-panel2",
-                )}
-              >
-                <TokenIcon icon={token.icon} size={15} />
-                <div className="min-w-0 flex-1">
-                  <div className="text-[7.5px] font-medium text-white">{token.symbol}</div>
-                  <div className="text-[5.5px] text-muted2">${fmtPrice(token.price)}</div>
-                </div>
-                <span
-                  className={cn(
-                    "text-[6px]",
-                    token.change24h >= 0 ? "text-up" : "text-down",
-                  )}
-                >
-                  {fmtPct(token.change24h)}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          <div className="min-w-0 p-2">
-            <div className="flex items-center gap-1.5">
-              <TokenIcon icon={btc.icon} size={16} />
-              <span className="text-[9px] font-semibold">BTC</span>
-              <span className="text-[6px] text-muted2">Bitcoin</span>
-              <span className="num ml-auto text-[9px] text-white">${fmtPrice(btc.price)}</span>
-              <span className={cn("text-[6.5px]", btc.change24h >= 0 ? "text-up" : "text-down")}>
-                {fmtPct(btc.change24h)}
-              </span>
-            </div>
-
-            <div className="mt-1.5 flex gap-2 text-[6px] text-muted2">
-              {["1分", "15分", "1小时", "4小时", "1天"].map((label, index) => (
-                <span key={label} className={index === 2 ? "text-white" : ""}>
-                  {label}
-                </span>
-              ))}
-              <span className="ml-auto text-muted2">指标</span>
-            </div>
-
-            <svg viewBox="0 0 520 170" className="mt-1.5 h-[120px] w-full sm:h-[150px]" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="previewFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#2ebd85" stopOpacity="0.2" />
-                  <stop offset="100%" stopColor="#2ebd85" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              {[30, 70, 110, 150].map((y) => (
-                <line key={y} x1="0" y1={y} x2="520" y2={y} stroke="#1e1e26" strokeDasharray="2 5" />
-              ))}
-              {[100, 200, 300, 400].map((x) => (
-                <line key={x} x1={x} y1="0" x2={x} y2="170" stroke="#1e1e26" strokeDasharray="2 5" />
-              ))}
-              <path
-                d="M0 128 C30 120 48 136 74 124 C98 113 112 126 138 110 C160 96 178 104 198 92 C226 75 242 88 268 76 C292 65 312 82 336 64 C360 47 380 60 406 50 C432 40 452 52 478 32 C494 20 508 26 520 20 L520 170 L0 170 Z"
-                fill="url(#previewFill)"
-              />
-              <path
-                d="M0 128 C30 120 48 136 74 124 C98 113 112 126 138 110 C160 96 178 104 198 92 C226 75 242 88 268 76 C292 65 312 82 336 64 C360 47 380 60 406 50 C432 40 452 52 478 32 C494 20 508 26 520 20"
-                stroke="#2ebd85"
-                strokeWidth="1.6"
-                fill="none"
-              />
-              <line x1="0" y1="20" x2="520" y2="20" stroke="#2ebd85" strokeDasharray="4 4" strokeOpacity="0.5" />
-            </svg>
-
-            <div className="mt-1 flex items-center gap-3 text-[6px] text-muted2">
-              <span>24小时交易量 <span className="text-white/60">$34.3亿</span></span>
-              <span>未平仓量 <span className="text-white/60">$8.9亿</span></span>
-              <span className="ml-auto hidden sm:inline">持有者 1,328</span>
-            </div>
-          </div>
-
-          <div className="hidden border-l border-line p-2 sm:block">
-            <div className="grid grid-cols-2 gap-0.5 rounded bg-panel2 p-0.5">
-              <span className="rounded bg-up py-1 text-center text-[6.5px] font-medium text-[#04120c]">做多</span>
-              <span className="py-1 text-center text-[6.5px] text-muted2">做空</span>
-            </div>
-            <div className="mt-2 text-[6px] text-muted2">市价</div>
-            <div className="mt-1 flex items-baseline gap-0.5">
-              <span className="text-[10px] text-muted2">$</span>
-              <span className="text-[18px] font-medium text-white/90">0</span>
-              <span className="ml-auto text-[6px] text-muted2">0 BTC</span>
-            </div>
-            <div className="mt-2 h-[3px] rounded-full bg-line">
-              <div className="h-full w-0 rounded-full bg-up" />
-            </div>
-            <div className="mt-2 flex items-center justify-between text-[6px] text-muted2">
-              <span>20x 杠杆</span>
-              <span>全仓</span>
-            </div>
-            <div className="mt-2 rounded bg-panel3 py-1.5 text-center text-[7px] text-muted2">
-              输入仓位规模
-            </div>
-            <div className="mt-2 border-t border-line pt-1.5 text-[6px] text-muted2">你的持仓</div>
-            <div className="mt-1 rounded border border-dashed border-line py-4 text-center text-[6px] text-muted2">
-              暂无持仓
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -595,7 +456,57 @@ const ORBIT_AVATARS = [
   { name: "Arkive", gradient: "linear-gradient(135deg,#f59e0b,#7c2d12)", left: "81%", top: "59%", size: 28, delay: "1.8s" },
 ];
 
-function SocialProof({ onStart }: { onStart: () => void }) {
+function HackathonBanner() {
+  return (
+    <section className="px-5 pb-24 sm:px-8">
+      <div className="relative mx-auto max-w-[1000px] overflow-hidden rounded-2xl border border-brand/30 bg-[linear-gradient(135deg,rgba(111,92,245,0.18),rgba(255,255,255,0.015))] p-6 sm:p-8">
+        <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-brand/25 blur-[80px]" />
+        <div className="pointer-events-none absolute -bottom-24 -left-16 h-56 w-56 rounded-full bg-[#38bdf8]/10 blur-[80px]" />
+
+        <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="max-w-[560px]">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-brand/35 bg-brand/10 px-3 py-1 text-[10.5px] font-semibold tracking-[0.14em] text-brand2">
+              <Trophy className="h-3 w-3" />
+              HACKATHON · TAPEOUT ACCELERATE
+            </span>
+            <h3 className="mt-3 text-[19px] font-semibold leading-snug text-white sm:text-[22px]">
+              本项目正在参加 X Layer × TapeOut 黑客松
+            </h3>
+            <p className="mt-2 text-[13px] leading-relaxed text-white/50">
+              在 X Layer 上持有指定资产就能投票（最多 10 票，可投给多个项目）。觉得这个产品有意思，去投票页支持一下；也可以点开黑客松主页，看看这一季的其他作品。
+            </p>
+            <p className="mt-2 text-[11px] text-white/30">
+              截止 2026/12/07 23:59 UTC · 投票需连接 X Layer 钱包
+            </p>
+          </div>
+
+          <div className="flex shrink-0 flex-col gap-2.5 sm:items-end">
+            <a
+              href="https://web3.okx.com/zh-hans/xlayer/hackathon-voting"
+              target="_blank"
+              rel="noreferrer"
+              className="group inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-brand px-6 text-[13.5px] font-semibold text-white shadow-[0_12px_40px_rgba(111,92,245,0.35)] transition hover:bg-brand/90"
+            >
+              为项目投票
+              <ArrowUpRight className="h-4 w-4 transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+            </a>
+            <a
+              href="https://web3.okx.com/zh-hans/xlayer/build-x-series"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/[0.04] px-6 text-[13px] text-white/75 transition hover:border-white/30 hover:bg-white/[0.07] hover:text-white"
+            >
+              查看黑客松
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SocialProof() {
   return (
     <section className="relative overflow-hidden px-5 py-28 sm:py-36">
       <div className="pointer-events-none absolute left-1/2 top-1/2 h-[520px] w-[980px] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-dashed border-white/[0.06]" />
@@ -615,101 +526,35 @@ function SocialProof({ onStart }: { onStart: () => void }) {
               width: avatar.size,
               height: avatar.size,
               background: avatar.gradient,
-              fontSize: avatar.size * 0.38,
             }}
-          >
-            {avatar.name.slice(0, 1).toUpperCase()}
-          </div>
+          />
         </div>
       ))}
-
-      <div className="relative z-20 mx-auto max-w-[620px] text-center">
-        <h2 className="text-balance text-[clamp(24px,3.2vw,34px)] font-semibold leading-[1.25] tracking-tight text-white">
-          加入 2,500,000 名交易者，
-          <br className="hidden sm:block" />
-          在 TikTap 打响名号
-        </h2>
-        <p className="mx-auto mt-3 max-w-[430px] text-[12px] leading-relaxed text-white/45">
-          关注顶级交易者，查看他们的实时仓位与盈亏，找到属于你的下一次机会。
-        </p>
-        <div className="mt-6 flex items-center justify-center gap-2.5">
-          <button
-            type="button"
-            onClick={onStart}
-            className="h-10 rounded-md bg-brand px-7 text-[12px] font-medium text-white shadow-[0_12px_40px_rgba(111,92,245,0.3)] transition hover:bg-brand/90"
-          >
-            开始交易
-          </button>
-          <button
-            type="button"
-            onClick={() => document.getElementById("product")?.scrollIntoView({ behavior: "smooth" })}
-            className="h-10 rounded-md border border-white/15 bg-white/[0.04] px-6 text-[12px] text-white/75 transition hover:border-white/30 hover:text-white"
-          >
-            了解网页版
-          </button>
-        </div>
-      </div>
     </section>
   );
 }
 
+const SOCIALS = [{ label: "X / Twitter", icon: AtSign }];
+
 function Footer({ onToast }: { onToast: (message: string) => void }) {
-  const columns = [
-    {
-      title: "关于我们",
-      links: ["关于 TikTap", "博客", "版本更新", "常见问题", "推广合作", "加入我们", "品牌"],
-    },
-    {
-      title: "社交媒体",
-      links: ["Discord", "X / Twitter", "Instagram", "YouTube", "LinkedIn"],
-    },
-    {
-      title: "法律信息",
-      links: ["隐私政策", "服务条款", "风险披露"],
-    },
-  ];
-
   return (
-    <footer className="border-t border-line bg-[#070709] px-5 pb-8 pt-14 sm:px-8">
-      <div className="mx-auto max-w-[1200px]">
-        <div className="grid grid-cols-2 gap-x-8 gap-y-10 md:grid-cols-[1.7fr_1fr_1fr_1fr]">
-          <div className="col-span-2 md:col-span-1">
-            <Logo size="md" className="text-[24px]" />
-            <p className="mt-2.5 max-w-[230px] text-[10.5px] leading-relaxed text-white/35">
-              每一位交易者都是传奇的开始
-            </p>
-            <p className="mt-5 text-[9px] text-white/25">© 2026 TikTap Labs Inc.</p>
-          </div>
-
-          {columns.map((column) => (
-            <div key={column.title}>
-              <h3 className="text-[9px] font-medium uppercase tracking-[0.14em] text-white/35">
-                {column.title}
-              </h3>
-              <ul className="mt-3 space-y-2">
-                {column.links.map((link) => (
-                  <li key={link}>
-                    <button
-                      type="button"
-                      onClick={() => onToast(`演示项目未包含「${link}」页面`)}
-                      className="text-left text-[10px] text-white/55 transition hover:text-white"
-                    >
-                      {link}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
+    <footer className="border-t border-line bg-[#070709] px-5 py-14 sm:px-8">
+      <div className="mx-auto flex max-w-[820px] flex-wrap items-center justify-center gap-3">
+        <h3 className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/35">
+          社交媒体
+        </h3>
+        <div className="flex flex-wrap items-center justify-center gap-2.5">
+          {SOCIALS.map(({ label, icon: Icon }) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => onToast(`演示项目未包含「${label}」页面`)}
+              className="group flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-[12.5px] text-white/60 transition hover:border-white/25 hover:bg-white/[0.07] hover:text-white"
+            >
+              <Icon className="h-4 w-4 text-white/45 transition group-hover:text-white" />
+              {label}
+            </button>
           ))}
-        </div>
-
-        <div className="mt-12 flex flex-col gap-2 border-t border-line pt-5 text-[8.5px] text-white/25 sm:flex-row sm:items-center sm:justify-between">
-          <p>本页面为前端演示项目，与 TikTap Labs 无关联，不提供真实交易服务。</p>
-          <p className="flex items-center gap-3">
-            <span>简体中文</span>
-            <span className="h-2.5 w-px bg-white/10" />
-            <span>仅用于演示</span>
-          </p>
         </div>
       </div>
     </footer>

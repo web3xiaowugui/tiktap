@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { claimBet, getBetPool, getMyBet } from "@/api";
+import { useEffect } from "react";
+import { getBetPool, getMyBet } from "@/api";
 import type { BetPool, BetToken } from "@/api/types";
 import { RoundTimeline } from "@/components/RoundTimeline";
 import { useAuth } from "@/context/AuthContext";
@@ -7,7 +7,7 @@ import { useBetToken } from "@/context/BetTokenContext";
 import { useChainClock } from "@/lib/chainClock";
 import { cn } from "@/lib/cn";
 import { fmtQty } from "@/lib/format";
-import { ROUND_INTERVAL_BLOCKS, getTimelineRounds, type TimelineRound } from "@/lib/rounds";
+import { getTimelineRounds, type TimelineRound } from "@/lib/rounds";
 import { useApi } from "@/lib/useApi";
 
 export function PoolPanel({
@@ -63,6 +63,25 @@ function PoolPanelBody({
     [symbol, betToken.symbol, selected.startBlock, clock.version],
   );
   const pool = poolState.data;
+  const { reload: reloadPool } = poolState;
+
+  // 下注成功 / 领取成功后立刻重取池子；公共 RPC 状态有时慢半拍，再补两次延迟重取。
+  useEffect(() => {
+    let timers: number[] = [];
+    const onBet = () => {
+      reloadPool();
+      timers.push(
+        window.setTimeout(reloadPool, 1_500),
+        window.setTimeout(reloadPool, 4_000),
+      );
+    };
+    window.addEventListener("tiktap:bet-refresh", onBet);
+    return () => {
+      window.removeEventListener("tiktap:bet-refresh", onBet);
+      timers.forEach((timer) => window.clearTimeout(timer));
+      timers = [];
+    };
+  }, [reloadPool]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto p-3">
@@ -72,8 +91,7 @@ function PoolPanelBody({
         onSelect={onSelect}
       />
 
-      {poolState.loading ||
-      (pool && pool.roundStartBlock !== selected.startBlock) ? (
+      {!pool && poolState.loading ? (
         <PoolDetailsSkeleton />
       ) : poolState.error || !pool ? (
         <PoolError error={poolState.error} onRetry={poolState.reload} />
@@ -104,9 +122,18 @@ function PoolDetails({
   const longShare = total > 0 ? (pool.longAmount / total) * 100 : 0;
   const shortShare = total > 0 ? (pool.shortAmount / total) * 100 : 0;
   const hasBothSides = pool.longAmount > 0 && pool.shortAmount > 0;
-  const longPayout = hasBothSides ? total / pool.longAmount : null;
-  const shortPayout = hasBothSides ? total / pool.shortAmount : null;
+  // 领奖费率：到手 = 总池 / 本边池 * (1 - fee)，收益率 = (到手 - 本金) / 本金。
+  const feeFactor = 1 - (pool.feeBps ?? 0) / 10_000;
+  const longReturnPercent =
+    hasBothSides && pool.longAmount > 0
+      ? ((total * feeFactor) / pool.longAmount - 1) * 100
+      : null;
+  const shortReturnPercent =
+    hasBothSides && pool.shortAmount > 0
+      ? ((total * feeFactor) / pool.shortAmount - 1) * 100
+      : null;
   const participants = pool.longParticipants + pool.shortParticipants;
+  const feePercent = (pool.feeBps ?? 0) / 100;
 
   return (
     <>
@@ -124,7 +151,8 @@ function PoolDetails({
           unit={betToken.symbol}
           share={longShare}
           participants={pool.longParticipants}
-          payout={longPayout}
+          returnPercent={longReturnPercent}
+          returnPercentHint={`若涨方获胜：到手 =（总池 / 涨方池）×（1 - ${feePercent}%），收益率 = 到手 - 本金`}
           winner={round.status === "settled" ? pool.winner ?? undefined : undefined}
         />
         <PoolStat
@@ -133,7 +161,8 @@ function PoolDetails({
           unit={betToken.symbol}
           share={shortShare}
           participants={pool.shortParticipants}
-          payout={shortPayout}
+          returnPercent={shortReturnPercent}
+          returnPercentHint={`若跌方获胜：到手 =（总池 / 跌方池）×（1 - ${feePercent}%），收益率 = 到手 - 本金`}
           winner={round.status === "settled" ? pool.winner ?? undefined : undefined}
         />
         <PoolStat
@@ -167,14 +196,34 @@ function MyBetPanel({
 }) {
   const { user } = useAuth();
   const clock = useChainClock();
-  const [claiming, setClaiming] = useState(false);
   const myBetState = useApi(
     () => getMyBet(symbol, betToken.symbol, round.startBlock, user?.address),
     [symbol, betToken.symbol, round.startBlock, user?.address, clock.version],
   );
   const myBet = myBetState.data;
+  const { reload: reloadMyBet } = myBetState;
 
-  if (myBetState.loading) {
+  // 下注成功/领取成功后立刻重取「我的下注」，RPC 状态慢时再补两次。
+  useEffect(() => {
+    let timers: number[] = [];
+    const onBet = () => {
+      reloadMyBet();
+      timers.push(
+        window.setTimeout(reloadMyBet, 1_500),
+        window.setTimeout(reloadMyBet, 4_000),
+      );
+    };
+    window.addEventListener("tiktap:bet-refresh", onBet);
+    return () => {
+      window.removeEventListener("tiktap:bet-refresh", onBet);
+      timers.forEach((timer) => window.clearTimeout(timer));
+      timers = [];
+    };
+  }, [reloadMyBet]);
+
+  // 切轮次时继续展示上一轮的内容，直到新数据回来再替换：避免骨架屏闪一下。
+  // 只有从来没加载到过数据（首次进入）才显示骨架。
+  if (myBetState.loading && !myBet) {
     return (
       <div className="mt-5 rounded-lg border border-line bg-panel2/30 p-3">
         <div className="skeleton h-3 w-16 rounded" />
@@ -202,10 +251,11 @@ function MyBetPanel({
     );
   }
 
-  // 没下注时整块不渲染：没有数据就没有可展示的内容。
-  if (!myBet) return null;
+  // 没下注（链上仓位为 0）时整块不渲染：不要展示一张全是 0 的表。
+  if (!myBet || myBet.amount <= 0) return null;
 
   const total = pool.longAmount + pool.shortAmount;
+  const feeFactor = 1 - (pool.feeBps ?? 0) / 10_000;
   const formatNumber = (value: number) =>
     fmtQty(value, value >= 100 ? 0 : 2);
   const formatAmount = (value: number) =>
@@ -216,11 +266,11 @@ function MyBetPanel({
     `${value >= 0 ? "+" : "-"}${formatAmount(Math.abs(value))}`;
   const longExpected =
     myBet.longAmount > 0 && pool.longAmount > 0
-      ? (myBet.longAmount / pool.longAmount) * total
+      ? (myBet.longAmount / pool.longAmount) * total * feeFactor
       : 0;
   const shortExpected =
     myBet.shortAmount > 0 && pool.shortAmount > 0
-      ? (myBet.shortAmount / pool.shortAmount) * total
+      ? (myBet.shortAmount / pool.shortAmount) * total * feeFactor
       : 0;
   const settled = myBet.settled ?? round.status === "settled";
   const refunded = myBet.refund === true;
@@ -362,39 +412,23 @@ function MyBetPanel({
       </div>
 
       {settled && (myBet.claimable ?? 0) > 0 && !myBet.claimed && (
-        <button
-          type="button"
-          disabled={claiming}
-          onClick={async () => {
-            if (!user?.address) return;
-            const roundIndex = round.startBlock / ROUND_INTERVAL_BLOCKS;
-            setClaiming(true);
-            try {
-              await claimBet({
-                address: user.address,
-                market: symbol,
-                betToken: betToken.symbol,
-                roundIndex,
-              });
-              myBetState.reload();
-              clock.refresh();
-            } catch {
-              myBetState.reload();
-            } finally {
-              setClaiming(false);
-            }
-          }}
-          className="mt-3 h-9 w-full rounded-md bg-brand text-[14px] font-bold text-white transition hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {claiming ? "领取中…" : `领取 ${formatAmount(myBet.claimable ?? 0)}`}
-        </button>
+        <p className="mt-3 text-center text-[11px] text-muted2">
+          奖励由系统自动发放，无需手动领取
+        </p>
       )}
 
       {settled && myBet.claimed && (
-        <p className="mt-2 text-center text-[11px] text-muted2">本轮奖励已领取</p>
+        <p className="mt-2 text-center text-[11px] text-muted2">本轮奖励已自动发放</p>
       )}
     </div>
   );
+}
+
+/** 收益率百分比：正数带 +；≥100% 取整，小池子保留一位小数。 */
+function formatReturnPercent(percent: number): string {
+  const abs = Math.abs(percent);
+  const digits = abs >= 100 ? 0 : 1;
+  return `${percent >= 0 ? "+" : "-"}${abs.toFixed(digits)}%`;
 }
 
 function PoolStat({
@@ -403,7 +437,8 @@ function PoolStat({
   unit,
   participants,
   share,
-  payout,
+  returnPercent,
+  returnPercentHint,
   winner,
 }: {
   tone: "total" | "long" | "short";
@@ -411,7 +446,8 @@ function PoolStat({
   unit: string;
   participants: number;
   share?: number;
-  payout?: number | null;
+  returnPercent?: number | null;
+  returnPercentHint?: string;
   winner?: "long" | "short";
 }) {
   const isSide = tone !== "total";
@@ -448,16 +484,22 @@ function PoolStat({
               won ? (
                 <>
                   获胜
-                  {payout !== undefined && payout !== null && (
-                    <span className="text-white"> {payout.toFixed(2)}x</span>
+                  {returnPercent !== undefined && returnPercent !== null && (
+                    <span className="text-white" title={returnPercentHint}>
+                      {" "}
+                      {formatReturnPercent(returnPercent)}
+                    </span>
                   )}
                 </>
               ) : (
                 "未获胜"
               )
-            ) : payout !== undefined && payout !== null ? (
+            ) : returnPercent !== undefined && returnPercent !== null ? (
               <>
-                预计 <span className="text-white">{payout.toFixed(2)}x</span>
+                预计{" "}
+                <span className="text-white" title={returnPercentHint}>
+                  {formatReturnPercent(returnPercent)}
+                </span>
               </>
             ) : null}
           </div>

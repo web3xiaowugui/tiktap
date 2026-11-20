@@ -15,6 +15,9 @@ export interface HandlerContext {
 /** 返回普通对象会被自动序列化成 JSON；返回 undefined 表示自己写响应。 */
 export type Handler = (ctx: HandlerContext) => unknown | Promise<unknown>;
 
+/** 路由级前置校验：抛 HttpError 即中断请求。 */
+export type Guard = (req: IncomingMessage, pathname: string) => unknown | Promise<unknown>;
+
 interface Route {
   method: string;
   segments: string[];
@@ -33,6 +36,7 @@ export class HttpError extends Error {
 
 export class Router {
   private routes: Route[] = [];
+  private guard: Guard | null = null;
 
   add(method: string, path: string, handler: Handler): void {
     this.routes.push({
@@ -40,6 +44,15 @@ export class Router {
       segments: path.split("/").filter(Boolean),
       handler,
     });
+  }
+
+  /** 全局前置校验（例如统一登录校验），公开路径在里面放行。 */
+  useGuard(guard: Guard): void {
+    this.guard = guard;
+  }
+
+  async runGuard(req: IncomingMessage, pathname: string): Promise<void> {
+    if (this.guard) await this.guard(req, pathname);
   }
 
   get(path: string, handler: Handler): void {
@@ -111,6 +124,7 @@ export function startServer(router: Router, port: number, host = "127.0.0.1"): v
     }
 
     try {
+      await router.runGuard(req, url.pathname);
       const result = await runWithEnv(env, () =>
         found.handler({
           req,

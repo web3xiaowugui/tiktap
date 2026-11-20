@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { ArrowUpRight, Loader2, X } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/context/AuthContext";
 
@@ -22,9 +21,8 @@ export function AuthModal({
   onClose: () => void;
   redirectTo?: string;
 }) {
-  const navigate = useNavigate();
-  const { startXLogin, signInDemo } = useAuth();
-  const [pending, setPending] = useState<"x" | "demo" | null>(null);
+  const { startXLogin } = useAuth();
+  const [pending, setPending] = useState<"x" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -61,22 +59,6 @@ export function AuthModal({
           ? caught.message
           : "无法发起 X 授权，请检查服务端 X 应用配置。",
       );
-      setPending(null);
-    }
-  };
-
-  const handleDemo = async () => {
-    if (pending) return;
-    setError(null);
-    setPending("demo");
-
-    try {
-      await signInDemo();
-      onClose();
-      navigate(redirectTo);
-    } catch {
-      setError("进入演示模式失败，请重试。");
-    } finally {
       setPending(null);
     }
   };
@@ -118,9 +100,6 @@ export function AuthModal({
           <h1 className="mt-6 text-[22px] font-semibold tracking-tight text-white">
             使用 X 账号登录
           </h1>
-          <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
-            点击按钮会跳到 X 完成授权，回来后自动为你创建托管账户，下注由后端代为签名。
-          </p>
 
           <div className="mt-6">
             <button
@@ -141,10 +120,6 @@ export function AuthModal({
                 </>
               )}
             </button>
-
-            <p className="mt-2.5 text-center text-[9.5px] leading-relaxed text-muted2">
-              授权范围仅 users.read，不会发推、不会读取你的私信。
-            </p>
           </div>
 
           {error && (
@@ -152,35 +127,6 @@ export function AuthModal({
               {error}
             </p>
           )}
-
-          <div className="my-5 flex items-center gap-3 text-[9.5px] text-muted2">
-            <span className="h-px flex-1 bg-line" />
-            或
-            <span className="h-px flex-1 bg-line" />
-          </div>
-
-          <button
-            type="button"
-            onClick={handleDemo}
-            disabled={Boolean(pending)}
-            className="group flex w-full items-center justify-center gap-1.5 rounded-lg border border-line bg-panel px-3 py-2.5 text-[11.5px] text-white transition hover:border-line2 hover:text-white disabled:opacity-60"
-          >
-            {pending === "demo" ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                正在进入演示…
-              </>
-            ) : (
-              <>
-                直接进入演示模式
-                <ArrowUpRight className="h-3.5 w-3.5 text-muted2 transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-white" />
-              </>
-            )}
-          </button>
-
-          <p className="mt-5 text-[9.5px] leading-relaxed text-muted2">
-            演示环境：X 授权由后端完成换 token，拿到的账号资料只用来做身份标识；托管账户私钥由后端创建并保管，登录状态仅保存在本地。
-          </p>
         </div>
       </div>
     </div>
