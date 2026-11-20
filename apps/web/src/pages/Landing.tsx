@@ -4,6 +4,7 @@ import {
   ArrowLeftRight,
   ArrowUpRight,
   AtSign,
+  BookOpen,
   ChevronDown,
   Coins,
   LogIn,
@@ -13,6 +14,7 @@ import {
 } from "lucide-react";
 import { AuthModal } from "@/components/AuthModal";
 import { Logo } from "@/components/Logo";
+import { UsageDocs } from "@/components/UsageDocs";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 
@@ -22,6 +24,7 @@ export default function Landing() {
   const { push } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [authOpen, setAuthOpen] = useState(searchParams.get("login") === "1");
+  const [docsOpen, setDocsOpen] = useState(false);
 
   /**
    * X 授权回跳：地址栏带 ?x_ticket=... 时换资料 → 建/复用托管账户 → 进发现页。
@@ -76,6 +79,7 @@ export default function Landing() {
       <LandingNav
         onLogin={openAuth}
         onStart={start}
+        onDocs={() => setDocsOpen(true)}
       />
 
       <Hero onStart={start} />
@@ -86,6 +90,7 @@ export default function Landing() {
       <Footer onToast={push} />
 
       <AuthModal open={authOpen} onClose={closeAuth} redirectTo="/discover" />
+      <UsageDocs open={docsOpen} onClose={() => setDocsOpen(false)} />
     </div>
   );
 }
@@ -93,9 +98,11 @@ export default function Landing() {
 function LandingNav({
   onLogin,
   onStart,
+  onDocs,
 }: {
   onLogin: () => void;
   onStart: () => void;
+  onDocs: () => void;
 }) {
   const { user, finishXLogin } = useAuth();
 
@@ -104,6 +111,15 @@ function LandingNav({
       <div className="mx-auto flex h-16 max-w-[1320px] items-center gap-8 px-5 sm:px-8">
         <button type="button" onClick={onStart} className="flex shrink-0 items-center" aria-label="TikTap">
           <Logo size="md" className="text-[24px]" />
+        </button>
+
+        <button
+          type="button"
+          onClick={onDocs}
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md px-3 text-[13px] text-white/60 transition hover:bg-white/[0.06] hover:text-white"
+        >
+          <BookOpen className="h-4 w-4" />
+          使用文档
         </button>
 
         <div className="ml-auto flex items-center gap-2.5">
