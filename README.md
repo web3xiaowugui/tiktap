@@ -197,7 +197,3 @@ Foundry v1.9.0 已安装（`forge` / `cast` / `anvil` / `chisel` 在 `%USERPROFI
 可选环境由 `APP_ENVS` 配置（逗号分隔，顺序就是前端下拉顺序）：本地开发用 `APP_ENVS=dev,testnet`，线上部署只想要测试网+主网时设 `APP_ENVS=testnet,mainnet`（此时 `dev` 相关变量可以不配）。前端通过 `GET /api/envs` 拉取启用的环境列表，只显示配置过的环境；只剩一个环境时下拉自动隐藏。主网配置用 `MAINNET_` 前缀（`MAINNET_RPC_URL` / `MAINNET_CHAIN_ID=196` / `MAINNET_POOL_MARKET_ADDRESS` / 代币地址等），没配 market 时链上写操作会自动跳过。切换环境是软切换，不整页刷新，数据会自动重新拉取。
 
 链上写操作还需要：`POOL_MARKET_ADDRESS` 与三个代币地址（`TEST_TOKEN_ADDRESS` / `OKB_TOKEN_ADDRESS` / `BEM_TOKEN_ADDRESS`，`pnpm contracts:deploy` 会打印）、`OPERATOR_PKEY`（只用于 `setAllowed` / `setMarket` / `settle`，不碰用户的钱）。本地演示可设 `GAS_TOPUP_WEI` 给新地址打 gas，主网应留空。自动结算默认开启，设 `AUTO_SETTLE=0` 关闭（本地用 `anvil_mine` 快进时建议关掉，改用 `/api/settle/round` 显式指定结果）。
-
-## 说明
-
-演示项目，与 FOMO Labs 无关联，不提供真实交易服务。界面中的名称、数值和头像均为模拟数据。
