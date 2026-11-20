@@ -64,11 +64,11 @@ curl http://127.0.0.1:8787/api/health
 | GET | `/api/auth/x/callback` | X 授权回调：换 token、取 users/me，302 回前端带一次性票据 |
 | POST | `/api/auth/x/session` | 票据换账号资料，随后前端建/复用托管账户 |
 | GET | `/api/bets?address=&limit=` | 某个地址的下注记录（结构化，含结算结果/派奖/领取状态） |
-| POST | `/api/auth/demo` `/api/auth/signout` | 演示登录 / 登出 |
+| POST | `/api/auth/signout` | 登出 |
 
 模拟数据在后端 `apps/server/src/data/mockData.ts`（原前端文件整体搬入），要改数值只改这一处。
 
-**K 线是例外**：15s / 30s / 1m 实时行情由浏览器直连 OKX 公共接口（`apps/web/src/api/liveMarket.ts`），OKX 的 `bar` 直接支持这三个周期。免费额度按用户 IP 分摊，服务端既不吃额度也不需要存 K 线；`/api/candles` 只提供确定性生成的演示数据。
+**K 线是例外**：15s / 30s / 1m 实时行情由浏览器直连 OKX 公共接口（`apps/web/src/api/liveMarket.ts`），OKX 的 `bar` 直接支持这三个周期。免费额度按用户 IP 分摊，服务端既不吃额度也不需要存 K 线；`/api/candles` 只提供确定性生成的模拟数据。
 
 登录态仍存在浏览器 localStorage（前端会话，不含敏感信息）。
 
@@ -106,7 +106,7 @@ POST /api/bet
 
 | 界面动作 | 实际调用 |
 | --- | --- |
-| 登录（X 账号或演示账号） | 有 X id 时后端按 id 全局复用账号（刷新、切环境都不换地址）；没有 X id 时先复用 localStorage 里的托管地址，查不到才 `POST /api/users` 建号，地址写回会话 |
+| 登录（X 账号） | 后端按 X id 全局复用账号（刷新、切环境都不换地址）；首次登录时 `POST /api/users` 建号，地址写回会话 |
 | 可用余额 / 代币列表 | `GET /api/wallet/:address` → 覆盖 `/api/bet-tokens` 里的 mock 余额 |
 | 「领币」 | `POST /api/faucet`（每地址有 mint 上限，gas 从用户地址出） |
 | Tap涨 / Tap跌 | `POST /api/bet`（`address` + URL 上的 `?symbol=` + 选中的下注代币 + 输入金额）；提交中按钮置灰，封盘后禁用并提示 |
@@ -188,12 +188,10 @@ Foundry v1.9.0 已安装（`forge` / `cast` / `anvil` / `chisel` 在 `%USERPROFI
 | `/discover?symbol=BTC` | 交易终端：币种侧栏、K 线、观点 / 活动 / 参与者、下注面板、我的持仓 |
 | `/u/:handle` | 个人主页 |
 
-`?demo=1` 可跳过登录直接进演示账户。
-
 ## 环境变量
 
 见 `.env.example`。必须自己生成 `WALLET_ENC_KEY`（`openssl rand -hex 32`），它用于 AES-256-GCM 加密用户私钥。
 
 可选环境由 `APP_ENVS` 配置（逗号分隔，顺序就是前端下拉顺序）：本地开发用 `APP_ENVS=dev,testnet`，线上部署只想要测试网+主网时设 `APP_ENVS=testnet,mainnet`（此时 `dev` 相关变量可以不配）。前端通过 `GET /api/envs` 拉取启用的环境列表，只显示配置过的环境；只剩一个环境时下拉自动隐藏。主网配置用 `MAINNET_` 前缀（`MAINNET_RPC_URL` / `MAINNET_CHAIN_ID=196` / `MAINNET_POOL_MARKET_ADDRESS` / 代币地址等），没配 market 时链上写操作会自动跳过。切换环境是软切换，不整页刷新，数据会自动重新拉取。
 
-链上写操作还需要：`POOL_MARKET_ADDRESS` 与三个代币地址（`TEST_TOKEN_ADDRESS` / `OKB_TOKEN_ADDRESS` / `BEM_TOKEN_ADDRESS`，`pnpm contracts:deploy` 会打印）、`OPERATOR_PKEY`（只用于 `setAllowed` / `setMarket` / `settle`，不碰用户的钱）。本地演示可设 `GAS_TOPUP_WEI` 给新地址打 gas，主网应留空。自动结算默认开启，设 `AUTO_SETTLE=0` 关闭（本地用 `anvil_mine` 快进时建议关掉，改用 `/api/settle/round` 显式指定结果）。
+链上写操作还需要：`POOL_MARKET_ADDRESS` 与三个代币地址（`TEST_TOKEN_ADDRESS` / `OKB_TOKEN_ADDRESS` / `BEM_TOKEN_ADDRESS`，`pnpm contracts:deploy` 会打印）、`OPERATOR_PKEY`（只用于 `setAllowed` / `setMarket` / `settle`，不碰用户的钱）。本地开发可设 `GAS_TOPUP_WEI` 给新地址打 gas，主网应留空。自动结算默认开启，设 `AUTO_SETTLE=0` 关闭（本地用 `anvil_mine` 快进时建议关掉，改用 `/api/settle/round` 显式指定结果）。
