@@ -148,9 +148,9 @@ export function FollowListDialog({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-[240px] flex-1 overflow-y-auto">
           {loading &&
-            Array.from({ length: 6 }).map((_, index) => (
+            Array.from({ length: 4 }).map((_, index) => (
               <div key={index} className="flex animate-pulse items-center gap-2.5 px-4 py-3">
                 <span className="h-8 w-8 shrink-0 rounded-full bg-panel2" />
                 <span className="h-3 w-32 rounded bg-panel2" />
