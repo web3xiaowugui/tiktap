@@ -3,7 +3,7 @@
 X Layer 二元彩池下注终端。仓库包含三端 + 一个共享包：
 
 ```
-apps/web        React 19 + Vite 7 + Tailwind 4 前端（原 fomo 前端整体搬入）
+apps/web        React 19 + Vite 7 + Tailwind 4 前端
 apps/server     Node 26 后端：node:http + node:sqlite + viem，无需构建步骤
 packages/shared 两端共享：领域类型、轮次数学
 contracts       Foundry 工程（Solidity，暂无依赖库）
