@@ -32,7 +32,7 @@ function Shot({
         />
       </button>
       {caption && (
-        <figcaption className="mt-1.5 text-[11px] leading-relaxed text-muted2">
+        <figcaption className="mt-1.5 text-[12px] leading-relaxed text-muted2">
           {caption}
         </figcaption>
       )}
@@ -51,13 +51,13 @@ function Section({
 }) {
   return (
     <section className="mt-9 first:mt-0">
-      <h2 className="flex items-baseline gap-2 text-[15px] font-semibold text-white">
-        <span className="num text-[12px] font-bold text-brand2">
+      <h2 className="flex items-baseline gap-2 text-[16.5px] font-semibold text-white">
+        <span className="num text-[13px] font-bold text-brand2">
           {String(index).padStart(2, "0")}
         </span>
         {title}
       </h2>
-      <div className="mt-2 space-y-2 text-[13px] leading-relaxed text-muted">
+      <div className="mt-2 space-y-2 text-[14.5px] leading-relaxed text-muted">
         {children}
       </div>
     </section>
@@ -66,7 +66,7 @@ function Section({
 
 function Tip({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mt-3 rounded-lg border border-brand/25 bg-brand/5 px-3 py-2 text-[12px] leading-relaxed text-white/75">
+    <div className="mt-3 rounded-lg border border-brand/25 bg-brand/5 px-3 py-2 text-[13px] leading-relaxed text-white/75">
       {children}
     </div>
   );
@@ -105,14 +105,14 @@ export function UsageDocs({
         <button
           type="button"
           onClick={onClose}
-          className="inline-flex h-9 items-center gap-1.5 rounded-md border border-line2 bg-white/[0.04] px-3 text-[13px] text-white/85 transition hover:bg-white/[0.08] hover:text-white"
+          className="inline-flex h-9 items-center gap-1.5 rounded-md border border-line2 bg-white/[0.04] px-3 text-[14.5px] text-white/85 transition hover:bg-white/[0.08] hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" />
           返回
         </button>
         <div className="flex items-center gap-2 text-white/90">
           <BookOpen className="h-4 w-4 text-brand2" />
-          <span className="text-[13px] font-medium">使用文档</span>
+          <span className="text-[14.5px] font-medium">使用文档</span>
         </div>
         <div className="ml-auto opacity-50">
           <Logo size="sm" />
@@ -121,7 +121,7 @@ export function UsageDocs({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[860px] px-5 pb-20 pt-10 sm:px-8">
-          <p className="text-[13px] leading-relaxed text-muted">
+          <p className="text-[14.5px] leading-relaxed text-muted">
             TikTap 是 X Layer 上的涨跌二元彩池：选一个标的、看涨或看跌、押注，区块到达后自动开奖。
             不需要钱包插件，也不需要助记词——登录后后端会为你生成一个托管钱包并代签交易。
           </p>
@@ -277,7 +277,7 @@ export function UsageDocs({
             </p>
           </Section>
 
-          <div className="mt-12 border-t border-line pt-4 text-[11px] text-muted2">
+          <div className="mt-12 border-t border-line pt-4 text-[12px] text-muted2">
             文档会随功能更新；发现和截图不一致的地方，以页面实际行为为准。
           </div>
         </div>
