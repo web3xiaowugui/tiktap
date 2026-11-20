@@ -1,0 +1,13 @@
+# fail2ban：SSH 暴力破解防护（放到 /etc/fail2ban/jail.d/sshd.local）
+# backend=systemd 适配 Ubuntu 用 journald 记录 sshd 的日志。
+# ignoreip 里记得把部署机的出口 IP 加上，避免自己的密钥/密码错误被误封。
+
+[sshd]
+enabled = true
+backend = systemd
+port = 22
+filter = sshd
+maxretry = 5
+findtime = 10m
+bantime = 1h
+ignoreip = 127.0.0.1/8 42.236.216.91
