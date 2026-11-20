@@ -193,15 +193,6 @@ export function UsageDocs({
               caption="⑤ 轮次规则：600 块一轮，前 300 块下注、后 300 块等待开奖；下注代币当前只开放 TEST。"
               onZoom={setZoom}
             />
-            <p>
-              面板上会显示「距封盘 N 块」——倒计时归零即封盘，封盘后不能再下注，等这一轮开奖。
-            </p>
-            <Shot
-              src="04-trade-panel.png"
-              alt="下注面板与轮次状态"
-              caption="⑥ 下注面板：本轮状态、距封盘区块数、金额与买涨 / 买跌。"
-              onZoom={setZoom}
-            />
             <Tip>
               轮次由链上区块驱动，不依赖服务器时间。刷新页面、切换设备看到的都是同一轮。
             </Tip>
@@ -253,7 +244,7 @@ export function UsageDocs({
             <Shot
               src="07-leaderboard.png"
               alt="排行榜"
-              caption="⑦ 排行榜：盈利金额 + 百分比。"
+              caption="⑥ 排行榜：盈利金额 + 百分比。"
               onZoom={setZoom}
             />
           </Section>
@@ -266,7 +257,7 @@ export function UsageDocs({
             <Shot
               src="08-profile.png"
               alt="个人主页"
-              caption="⑧ 个人主页：统计、余额、持仓、轮次历史与活动。"
+              caption="⑦ 个人主页：统计、余额、持仓、轮次历史与活动。"
               onZoom={setZoom}
             />
           </Section>
@@ -282,8 +273,7 @@ export function UsageDocs({
             </p>
             <p>
               <span className="text-white">为什么点下注没反应？</span>
-              大概率是已封盘（看「距封盘」是否为 0）、余额不足，或者该下注代币暂时停用；
-              面板上会有对应的提示。
+              大概率是已封盘、余额不足，或者该下注代币暂时停用；面板上会有对应的提示。
             </p>
           </Section>
 
