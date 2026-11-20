@@ -268,13 +268,28 @@ export function registerRoutes(router: Router, db: Db): void {
       .prepare("SELECT id FROM users WHERE LOWER(address) = LOWER(?)")
       .get(address) as { id: number } | undefined;
     if (!user) throw new HttpError(404, `用户不存在：${address}`);
-    // 新版 TEST 不限量：只报当前这枚币的累计已领，供弹框展示。
+    // 新版 TEST 不限量：报累计已领 + 冷却倒计时，供弹框展示。
     const tokenRow = db
       .prepare(
         "SELECT token_address FROM markets WHERE env = ? AND bet_token = 'TEST' AND token_address IS NOT NULL LIMIT 1",
       )
       .get(currentEnv()) as { token_address: string } | undefined;
-    return { claimed: readMintedAmount(db, user.id, tokenRow?.token_address) };
+    const cooldownSec = Number(process.env.FAUCET_COOLDOWN_SEC ?? "300");
+    const lastMint = db
+      .prepare(
+        "SELECT created_at FROM txs WHERE user_id = ? AND env = ? AND kind = 'mint' AND status = 'confirmed' " +
+          "ORDER BY created_at DESC LIMIT 1",
+      )
+      .get(user.id, currentEnv()) as { created_at: number } | undefined;
+    const cooldownMs =
+      Number.isFinite(cooldownSec) && cooldownSec > 0 ? cooldownSec * 1000 : 0;
+    const nextClaimAt = lastMint && cooldownMs > 0 ? lastMint.created_at + cooldownMs : 0;
+    return {
+      claimed: readMintedAmount(db, user.id, tokenRow?.token_address),
+      cooldownSec: cooldownMs > 0 ? cooldownSec : 0,
+      nextClaimAt,
+      remainingSec: Math.max(0, Math.ceil((nextClaimAt - Date.now()) / 1000)),
+    };
   });
 
   router.post("/api/faucet", async ({ req }) => {

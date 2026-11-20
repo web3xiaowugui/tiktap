@@ -444,7 +444,13 @@ export async function faucet(input: {
 }
 
 /** 领取进度：累计已领数量（新版 TEST 不限量，不再有上限）。 */
-export async function getFaucetStatus(address: string): Promise<{ claimed: number }> {
+/** 领取进度：累计已领数量 + 冷却剩余时间（每 5 分钟可领一次）。 */
+export async function getFaucetStatus(address: string): Promise<{
+  claimed: number;
+  cooldownSec: number;
+  nextClaimAt: number;
+  remainingSec: number;
+}> {
   return request(`/faucet/status?address=${encodeURIComponent(address)}`);
 }
 

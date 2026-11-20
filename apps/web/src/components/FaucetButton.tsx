@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Coins, Loader2, X } from "lucide-react";
+import { Clock, Coins, Loader2, X } from "lucide-react";
 import { faucet, getFaucetStatus } from "@/api";
 import { useAuth } from "@/context/AuthContext";
 import { useBetToken } from "@/context/BetTokenContext";
@@ -8,11 +8,19 @@ import { environmentLabel, useEnvironment } from "@/lib/environment";
 
 const CLAIM_AMOUNT = 1000;
 const FAUCET_SYMBOL = "TEST";
+const DEFAULT_COOLDOWN_SEC = 300;
+
+function fmtCountdown(seconds: number): string {
+  const total = Math.max(0, Math.ceil(seconds));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
 
 /**
  * 顶栏「领测试币」：只发 TEST，不跟随当前下注代币。
  * 点开弹框展示本次可领数量，确认后调 /api/faucet，领完刷新余额。
- * 是否到上限以数据库 mint 记录为准（余额会因为下注/转账变化，不可靠）。
+ * 服务端每地址有冷却（默认 300s），弹框里用倒计时提示「多久之后才能再领」。
  */
 export function FaucetButton() {
   const { user } = useAuth();
@@ -22,7 +30,11 @@ export function FaucetButton() {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState<{ claimed: number } | null>(null);
+  const [status, setStatus] = useState<{
+    claimed: number;
+    cooldownSec: number;
+  } | null>(null);
+  const [remaining, setRemaining] = useState(0);
 
   const symbol = FAUCET_SYMBOL;
   const balance = tokens.find((token) => token.symbol === FAUCET_SYMBOL)?.balance;
@@ -32,8 +44,12 @@ export function FaucetButton() {
     if (!open || !user?.address) return;
     setError(null);
     setStatus(null);
+    setRemaining(0);
     getFaucetStatus(user.address)
-      .then(setStatus)
+      .then((next) => {
+        setStatus({ claimed: next.claimed, cooldownSec: next.cooldownSec });
+        setRemaining(next.remainingSec);
+      })
       .catch(() => setStatus(null));
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !pending) setOpen(false);
@@ -42,11 +58,20 @@ export function FaucetButton() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, pending, user?.address]);
 
+  // 打开弹框期间每秒递减
+  useEffect(() => {
+    if (!open) return;
+    const timer = window.setInterval(() => {
+      setRemaining((value) => (value > 0 ? value - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [open]);
+
   // 主网没有「测试币」概念，直接不显示入口
   if (environment === "mainnet") return null;
 
   const claim = async () => {
-    if (!user?.address || pending) return;
+    if (!user?.address || pending || remaining > 0) return;
     setPending(true);
     setError(null);
 
@@ -59,9 +84,14 @@ export function FaucetButton() {
       const claimed = Number(result.amountWei) / 1e18;
       reloadBalances();
       push(`已领取 ${claimed} ${symbol}`, "success");
+      setRemaining(status?.cooldownSec ?? DEFAULT_COOLDOWN_SEC);
       setOpen(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "领取失败，请重试");
+      // 429 = 冷却中：重新拉一次状态，让倒计时和服务端对齐
+      getFaucetStatus(user.address)
+        .then((next) => setRemaining(next.remainingSec))
+        .catch(() => undefined);
     } finally {
       setPending(false);
     }
@@ -100,6 +130,7 @@ export function FaucetButton() {
             <h2 className="text-[16px] font-semibold text-white">领取测试币</h2>
             <p className="mt-1 text-[11px] leading-relaxed text-muted">
               当前环境：<span className="text-white">{environmentLabel(environment)}</span>。
+              每个地址每 {Math.round((status?.cooldownSec ?? DEFAULT_COOLDOWN_SEC) / 60)} 分钟可领一次。
             </p>
 
             <div className="mt-5 rounded-xl border border-line bg-[#0a0a0c] px-4 py-5 text-center">
@@ -122,6 +153,12 @@ export function FaucetButton() {
                   累计已领 {status.claimed} TEST
                 </div>
               )}
+              {remaining > 0 && (
+                <div className="num mt-2 inline-flex items-center gap-1 rounded-md border border-line bg-panel/60 px-2 py-1 text-[10.5px] text-muted">
+                  <Clock className="h-3 w-3" />
+                  下次可领 {fmtCountdown(remaining)}
+                </div>
+              )}
             </div>
 
             {error && (
@@ -142,7 +179,7 @@ export function FaucetButton() {
               <button
                 type="button"
                 onClick={claim}
-                disabled={pending || !user?.address}
+                disabled={pending || remaining > 0 || !user?.address}
                 className="flex h-10 flex-[1.4] items-center justify-center gap-1.5 rounded-lg bg-white text-[11.5px] font-semibold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {pending ? (
@@ -150,6 +187,8 @@ export function FaucetButton() {
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     领取中…
                   </>
+                ) : remaining > 0 ? (
+                  <>{fmtCountdown(remaining)} 后可领取</>
                 ) : (
                   <>确定领取</>
                 )}
