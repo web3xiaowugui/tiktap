@@ -32,6 +32,9 @@ tar -czf .cache/deploy/tiktap.tar.gz \
   --exclude=out \
   --exclude=broadcast \
   --exclude=.env \
+  --exclude=deploy/env.production \
+  --exclude=deploy/origin.pem \
+  --exclude=deploy/origin.key \
   .
 
 echo "done: .cache/deploy/tiktap.tar.gz（服务器上把 deploy/env.production 拷成 .env 即可）"
