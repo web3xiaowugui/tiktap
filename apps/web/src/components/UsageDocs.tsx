@@ -183,13 +183,23 @@ export function UsageDocs({
 
           <Section index={4} title="选标的、轮次与封盘">
             <p>
-              在标的物区域选择要参与的市场（例如 BTC）。每轮按固定区块窗口自动轮转，
-              面板上会显示「距封盘 N 块」——倒计时归零即封盘，封盘后不能再下注，等下一轮开奖。
+              在标的物区域选择要参与的市场（例如 BTC）。每轮固定 <span className="num text-white">600</span> 个区块，
+              前 <span className="num text-white">300</span> 个区块可以下注，后 <span className="num text-white">300</span> 个区块等待开奖；
+              所以任意时刻都有一轮可以下注、一轮正在等开奖。
+            </p>
+            <Shot
+              src="09-round-window.png"
+              alt="轮次规则示意"
+              caption="⑤ 轮次规则：600 块一轮，前 300 块下注、后 300 块等待开奖；下注代币当前只开放 TEST。"
+              onZoom={setZoom}
+            />
+            <p>
+              面板上会显示「距封盘 N 块」——倒计时归零即封盘，封盘后不能再下注，等这一轮开奖。
             </p>
             <Shot
               src="04-trade-panel.png"
               alt="下注面板与轮次状态"
-              caption="⑤ 下注面板：本轮状态、距封盘区块数、金额与买涨 / 买跌。"
+              caption="⑥ 下注面板：本轮状态、距封盘区块数、金额与买涨 / 买跌。"
               onZoom={setZoom}
             />
             <Tip>
@@ -209,6 +219,10 @@ export function UsageDocs({
             <Tip>
               同一个地址的交易是串行提交的，连续点击时后一笔会等前一笔上链完成，避免 nonce 冲突。
             </Tip>
+            <p>
+              下注代币当前只开放 <span className="text-white">TEST</span>；OKB / BEM 还在准备中，
+              点它们的按钮会提示「暂未开放」。
+            </p>
           </Section>
 
           <Section index={6} title="开奖与领奖">
@@ -239,7 +253,7 @@ export function UsageDocs({
             <Shot
               src="07-leaderboard.png"
               alt="排行榜"
-              caption="⑥ 排行榜：盈利金额 + 百分比。"
+              caption="⑦ 排行榜：盈利金额 + 百分比。"
               onZoom={setZoom}
             />
           </Section>
@@ -252,7 +266,7 @@ export function UsageDocs({
             <Shot
               src="08-profile.png"
               alt="个人主页"
-              caption="⑦ 个人主页：统计、余额、持仓、轮次历史与活动。"
+              caption="⑧ 个人主页：统计、余额、持仓、轮次历史与活动。"
               onZoom={setZoom}
             />
           </Section>
