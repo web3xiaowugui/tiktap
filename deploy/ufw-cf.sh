@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# 备用方案（已改走 Cloudflare Authenticated Origin Pulls / mTLS，见 deploy/README-hardening.md）。
+# 未开 mTLS 时可用本脚本按 Cloudflare 网段放行 80/443。
 set -euo pipefail
 
 ufw default deny incoming
